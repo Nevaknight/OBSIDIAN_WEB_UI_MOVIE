@@ -2,134 +2,506 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
 <meta name="referrer" content="no-referrer">
 <meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<title>Мнемозина Кино · проверка</title>
+<meta name="apple-mobile-web-app-title" content="Кино">
+<meta name="theme-color" content="#17171a">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icon-180.png">
+<title>Мнемозина Кино</title>
 <style>
-:root{--bg:#17171a;--card:#222227;--line:#34343a;--tx:#e6e6ea;--mut:#9a9aa3;--acc:#8a5cf5;--ok:#3fb27f;--bad:#e05252;--warn:#e3b341}
-*{box-sizing:border-box}
-body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.45 -apple-system,system-ui,sans-serif;padding:calc(env(safe-area-inset-top) + 18px) 16px calc(env(safe-area-inset-bottom) + 24px)}
-h1{font-size:22px;margin:0 0 4px}
-.sub{color:var(--mut);font-size:14px;margin-bottom:18px}
-.card{background:var(--card);border-radius:14px;padding:14px;margin-bottom:12px}
-.card h2{font-size:15px;margin:0 0 10px}
-button{font:inherit;font-weight:600;border:0;border-radius:10px;height:46px;padding:0 16px;width:100%;background:var(--acc);color:#fff;margin-top:8px}
-button.sec{background:#2e2e35;color:var(--tx);font-weight:500}
-input{font:inherit;width:100%;height:44px;border-radius:10px;border:1px solid var(--line);background:#1b1b1f;color:var(--tx);padding:0 12px;margin-top:8px}
-.row{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
-.row:first-of-type{border-top:0}
-.dot{width:12px;height:12px;border-radius:50%;background:#55555c;flex-shrink:0;margin-top:6px}
-.dot.ok{background:var(--ok)}.dot.bad{background:var(--bad)}.dot.run{background:var(--warn)}
-.row b{display:block;font-weight:600}
-.row small{color:var(--mut);font-size:13px;word-break:break-word}
-.who{font-size:14px;color:var(--mut)}
+/* ===== Мнемозина Кино (phone) — design tokens: see DATA/SYSTEM/_CORE_PHONE.md «Оформление» ===== */
+:root{
+  --bg:#17171a;--bar:#1c1c20f0;--card:#222227;--card2:#2a2a30;--line:#33333a;
+  --tx:#ececf0;--mut:#9a9aa3;--faint:#6c6c75;--acc:#8a5cf5;--acc2:#a585ff;
+  --ok:#3fb27f;--bad:#e05252;--warn:#e3b341;
+  --st-watching:#8a5cf5;--st-planned:#4a8fe0;--st-watched:#3fb27f;--st-dropped:#b75656;--st-unwatched:#6f6f6f;
+  --r:14px;--top:calc(env(safe-area-inset-top) + 56px);
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;-webkit-text-size-adjust:100%}
+body{padding:var(--top) 0 calc(env(safe-area-inset-bottom) + 24px);overscroll-behavior-y:none}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
+/* top bar: 3 sections + gear */
+.top{position:fixed;left:0;right:0;top:0;z-index:20;padding:env(safe-area-inset-top) 10px 0;height:var(--top);background:var(--bar);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);border-bottom:1px solid var(--line);display:flex;align-items:center;gap:4px}
+.tb{height:44px;min-width:44px;padding:0 12px;border-radius:12px;display:flex;align-items:center;gap:7px;color:var(--mut);font-size:15px;font-weight:600}
+.tb svg{width:22px;height:22px;flex-shrink:0}
+.tb.on{color:var(--tx);background:var(--card2)}
+.tb .lb{display:none}.tb.on .lb{display:inline}
+.grow{flex:1}
+.sync{width:8px;height:8px;border-radius:50%;background:var(--faint);margin-right:4px}
+.sync.ok{background:var(--ok)}.sync.run{background:var(--warn)}.sync.bad{background:var(--bad)}
+.page{padding:12px 14px 0}
+h2{font-size:13px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.05em;margin:18px 4px 8px}
+h2:first-child{margin-top:4px}
+.empty{color:var(--mut);text-align:center;padding:28px 12px;font-size:15px}
+.note{color:var(--mut);font-size:13px;margin:8px 4px}
+/* poster */
+.pst{width:46px;height:68px;border-radius:8px;flex-shrink:0;background:var(--card2) center/cover no-repeat;display:flex;align-items:center;justify-content:center;color:var(--faint);font-weight:700;font-size:18px}
+.pst.big{width:84px;height:124px;border-radius:12px;font-size:28px}
+/* «new episodes» card */
+.nc{display:flex;align-items:center;gap:12px;background:var(--card);border-radius:var(--r);padding:10px;margin-bottom:8px}
+.nc .mid{flex:1;min-width:0}
+.nc .t{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.nc .s{font-size:14px;color:var(--mut);margin-top:2px}
+.nc .s b{color:var(--tx);font-weight:600}
+.badge{display:inline-block;margin-left:6px;font-size:12px;font-weight:700;color:var(--acc2);background:#8a5cf522;border-radius:8px;padding:1px 7px}
+.chk{width:46px;height:46px;border-radius:50%;border:2px solid var(--line);display:flex;align-items:center;justify-content:center;flex-shrink:0;color:var(--mut)}
+.chk svg{width:22px;height:22px}
+.chk.on{background:var(--ok);border-color:var(--ok);color:#fff}
+.chk:active{transform:scale(.92)}
+/* soon */
+.soon{display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--line);font-size:15px}
+.soon:last-child{border-bottom:0}
+.soon .d{width:74px;flex-shrink:0;color:var(--acc2);font-weight:600;font-size:14px}
+.soon .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.soon .e{color:var(--mut);font-size:14px}
+.box{background:var(--card);border-radius:var(--r);padding:2px 12px}
+/* chips */
+.chips{display:flex;gap:6px;overflow-x:auto;padding:2px 2px 10px;scrollbar-width:none}
+.chips::-webkit-scrollbar{display:none}
+.chip{height:34px;padding:0 13px;border-radius:17px;background:var(--card);color:var(--mut);font-size:14px;font-weight:600;white-space:nowrap;flex-shrink:0;display:flex;align-items:center;gap:6px}
+.chip.on{background:var(--tx);color:var(--bg)}
+.chip i{font-style:normal;opacity:.6;font-weight:500}
+/* list rows */
+.row{display:flex;align-items:center;gap:12px;background:var(--card);border-radius:var(--r);padding:9px 10px;margin-bottom:8px}
+.row .mid{flex:1;min-width:0}
+.row .t{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row .s{font-size:13px;color:var(--mut);margin-top:3px}
+.pbar{height:4px;border-radius:2px;background:var(--line);margin-top:7px;overflow:hidden}
+.pbar i{display:block;height:100%;background:var(--acc)}
+.arrow{color:var(--faint);width:18px;height:18px;flex-shrink:0}
+.mbtn{height:36px;padding:0 12px;border-radius:10px;background:var(--card2);color:var(--mut);font-size:14px;font-weight:600;flex-shrink:0}
+.mbtn.on{background:#3fb27f26;color:var(--ok)}
+/* series screen */
+.back{display:flex;align-items:center;gap:4px;color:var(--acc2);font-weight:600;height:40px;margin:-4px 0 4px -4px}
+.back svg{width:22px;height:22px}
+.hero{display:flex;gap:14px;align-items:flex-start;margin-bottom:12px}
+.hero h1{font-size:21px;line-height:1.2;margin:2px 0 6px}
+.hero .s{color:var(--mut);font-size:14px}
+.stsel{display:flex;gap:6px;flex-wrap:wrap;margin:4px 0 14px}
+.stsel .chip.on{color:#fff}
+.seas{display:flex;gap:6px;overflow-x:auto;padding-bottom:10px;scrollbar-width:none}
+.seas::-webkit-scrollbar{display:none}
+.ep{display:flex;align-items:center;gap:12px;padding:9px 4px;border-bottom:1px solid var(--line)}
+.ep:last-child{border-bottom:0}
+.ep .n{width:30px;text-align:right;color:var(--mut);font-weight:600;flex-shrink:0}
+.ep .mid{flex:1;min-width:0}
+.ep .t{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-size:15px}
+.ep .d{font-size:12px;color:var(--faint);margin-top:1px}
+.ep.future{opacity:.5}
+.ep .chk{width:38px;height:38px}
+.ep .chk svg{width:18px;height:18px}
+/* settings */
+.set{background:var(--card);border-radius:var(--r);padding:4px 12px;margin-bottom:12px}
+.set .it{display:flex;align-items:center;gap:10px;min-height:48px;border-bottom:1px solid var(--line)}
+.set .it:last-child{border-bottom:0}
+.set .it .t{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ord{width:36px;height:36px;border-radius:10px;background:var(--card2);display:flex;align-items:center;justify-content:center;color:var(--mut)}
+.ord svg{width:18px;height:18px}.ord:disabled{opacity:.25}
+.seg{display:flex;background:var(--card2);border-radius:10px;padding:3px;gap:3px;margin:8px 0}
+.seg button{flex:1;height:34px;border-radius:8px;font-size:14px;font-weight:600;color:var(--mut)}
+.seg button.on{background:var(--card);color:var(--tx)}
+.wide{width:100%;height:48px;border-radius:12px;background:var(--card2);font-weight:600;margin-top:8px}
+.wide.acc{background:var(--acc);color:#fff}
+.wide.red{color:var(--bad)}
+/* login */
+.login{min-height:70vh;display:flex;flex-direction:column;justify-content:center;padding:0 24px;text-align:center}
+.login h1{font-size:26px;margin:0 0 8px}
+.login p{color:var(--mut);margin:0 0 22px}
+/* sheet (ask) */
+.sheet-bg{position:fixed;inset:0;background:#0008;z-index:40;display:flex;align-items:flex-end}
+.sheet{width:100%;background:var(--card);border-radius:18px 18px 0 0;padding:18px 16px calc(env(safe-area-inset-bottom) + 16px)}
+.sheet .q{font-weight:600;margin-bottom:6px}
+.sheet .q2{color:var(--mut);font-size:14px;margin-bottom:8px}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(env(safe-area-inset-bottom) + 20px);background:#000d;color:#fff;padding:10px 16px;border-radius:12px;font-size:14px;z-index:50;max-width:90vw}
 </style>
 </head>
 <body>
-<h1>Мнемозина Кино</h1>
-<div class="sub">Проверка: работает ли Яндекс Диск прямо с телефона</div>
-
-<div class="card">
-  <h2>1. Вход</h2>
-  <div class="who" id="who">Не вошёл</div>
-  <button id="login">Войти через Яндекс</button>
-  <button class="sec" id="login2">Войти и скопировать код вручную</button>
-  <input id="tok" placeholder="сюда вставить код (если вход вручную)" autocomplete="off" autocapitalize="off" spellcheck="false">
-  <button class="sec" id="logout">Выйти</button>
-</div>
-
-<div class="card">
-  <h2>2. Проверка</h2>
-  <div id="checks"></div>
-  <button id="run">Проверить</button>
-</div>
-
+<div class="top" id="top"></div>
+<div id="app"></div>
 <script>
+// ======================================================================================================
+// Мнемозина Кино — phone app. One page, no libraries. Data lives ONLY in Misha's Yandex Disk app folder:
+//   app:/kino.json   — written by the PC (Obsidian, kino.js): titles, statuses, episodes (date «for me»), seen
+//   app:/posters.json — written by the PC: small posters {id: dataURL}
+//   app:/marks.json  — written by the phone: {ops:[{at, id, ep:"s x e", seen} | {at, id, status}]}; the PC applies them
+//                      and writes kino.json.marks_applied = last applied «at» → the phone drops those ops
+//   app:/phone.json  — phone settings (order of tracking, home sorting)
+// The PC is the master copy. Technical notes: DATA/SYSTEM/_CORE_PHONE.md «Техническая часть».
+// ======================================================================================================
+const VERSION = "0.1.0";
 const CLIENT_ID = "9823dc5712e243f1978ba0f4f2f7d76a";
 const API = "https://cloud-api.yandex.net/v1/disk";
 const HERE = location.origin + location.pathname;
-const $ = (id) => document.getElementById(id);
-const store = { get: (k) => { try { return localStorage.getItem(k) || ""; } catch (e) { return ""; } }, set: (k, v) => { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch (e) { } } };
+const ST = { watching: "Смотрю", planned: "Буду", watched: "Смотрел", dropped: "Перестал", unwatched: "Не смотрел" };
+const ST_SERIES = ["watching", "planned", "watched", "dropped", "unwatched"];
+const ST_MOVIE = ["planned", "watched", "unwatched"];
+const MON = ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
+const WD = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"];
 
-// after «Войти через Яндекс» Yandex comes back here with #access_token=… (the part after # never goes to any server)
+// ---------- tiny helpers
+const $ = (s) => document.querySelector(s);
+const h = (p, tag, cls, txt) => { const e = document.createElement(tag); if (cls) e.className = cls; if (txt != null) e.textContent = txt; if (p) p.appendChild(e); return e; };
+const LS = {
+  get(k, d) { try { const v = localStorage.getItem("kino." + k); return v == null ? d : JSON.parse(v); } catch (e) { return d; } },
+  set(k, v) { try { v === undefined ? localStorage.removeItem("kino." + k) : localStorage.setItem("kino." + k, JSON.stringify(v)); } catch (e) { } },
+};
+const pad = (n) => String(n).padStart(2, "0");
+const ymd = (d) => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
+const today = () => ymd(new Date());
+const pd = (s) => { const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(s || ""); return m ? new Date(+m[1], +m[2] - 1, +m[3]) : null; };
+const dShort = (s) => { const d = pd(s); return d ? d.getDate() + " " + MON[d.getMonth()] + (d.getFullYear() !== new Date().getFullYear() ? " " + d.getFullYear() : "") : ""; };
+const dSoon = (s) => { const d = pd(s); if (!d) return ""; const t = pd(today()); const n = Math.round((d - t) / 864e5); return n === 0 ? "сегодня" : n === 1 ? "завтра" : WD[d.getDay()] + " " + d.getDate() + " " + MON[d.getMonth()]; };
+const SVG = {
+  home: '<path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/>',
+  tv: '<rect x="2" y="7" width="20" height="14" rx="2"/><path d="m17 2-5 5-5-5"/>',
+  film: '<rect x="3" y="3" width="18" height="18" rx="2"/><path d="M7 3v18M17 3v18M3 7.5h4M3 12h18M3 16.5h4M17 7.5h4M17 16.5h4"/>',
+  gear: '<path d="M12.2 2h-.4a2 2 0 0 0-2 2v.2a2 2 0 0 1-1 1.7l-.4.3a2 2 0 0 1-2 0l-.2-.1a2 2 0 0 0-2.7.7l-.2.4a2 2 0 0 0 .7 2.7l.2.1a2 2 0 0 1 1 1.7v.5a2 2 0 0 1-1 1.8l-.2.1a2 2 0 0 0-.7 2.7l.2.4a2 2 0 0 0 2.7.7l.2-.1a2 2 0 0 1 2 0l.4.3a2 2 0 0 1 1 1.7v.2a2 2 0 0 0 2 2h.4a2 2 0 0 0 2-2v-.2a2 2 0 0 1 1-1.7l.4-.3a2 2 0 0 1 2 0l.2.1a2 2 0 0 0 2.7-.7l.2-.4a2 2 0 0 0-.7-2.7l-.2-.1a2 2 0 0 1-1-1.8v-.5a2 2 0 0 1 1-1.7l.2-.1a2 2 0 0 0 .7-2.7l-.2-.4a2 2 0 0 0-2.7-.7l-.2.1a2 2 0 0 1-2 0l-.4-.3a2 2 0 0 1-1-1.7V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/>',
+  check: '<path d="M20 6 9 17l-5-5"/>',
+  right: '<path d="m9 18 6-6-6-6"/>', left: '<path d="m15 18-6-6 6-6"/>',
+  up: '<path d="m18 15-6-6-6 6"/>', down: '<path d="m6 9 6 6 6-6"/>',
+};
+const ic = (name) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + SVG[name] + "</svg>";
+function toast(t) { const e = h(document.body, "div", "toast", t); setTimeout(() => e.remove(), 2200); }
+
+// ---------- state
+const S = {
+  token: LS.get("token", ""),
+  kino: LS.get("kino", null),          // last kino.json from the PC
+  posters: LS.get("posters", {}),      // id -> dataURL
+  ops: LS.get("ops", []),              // my marks not yet confirmed by the PC
+  phone: LS.get("phone", { order: [], homeSort: "new" }),
+  tab: LS.get("tab", "home"),
+  serChip: LS.get("serChip", "watching"), movChip: LS.get("movChip", "planned"),
+  open: null, season: null,            // open series screen
+  sync: "", syncErr: "",
+};
+
+// ---------- Yandex Disk (only the app folder «Приложения/Мнемозина Кино»)
 (function takeToken() {
-  const h = new URLSearchParams(location.hash.slice(1));
-  if (h.get("access_token")) { store.set("ya_token", h.get("access_token")); history.replaceState(null, "", HERE); }
-  if (h.get("error")) alert("Яндекс ответил: " + (h.get("error_description") || h.get("error")));
+  const q = new URLSearchParams(location.hash.slice(1));
+  if (q.get("access_token")) { S.token = q.get("access_token"); LS.set("token", S.token); history.replaceState(null, "", HERE); }
 })();
-const token = () => (store.get("ya_token") || $("tok").value || "").trim();
-$("tok").oninput = () => { const t = $("tok").value.trim(); if (t.length > 20) { store.set("ya_token", t); paintWho(); } };
-function paintWho() { $("who").textContent = token() ? "Вошёл (разрешение сохранено на этом телефоне)" : "Не вошёл"; }
-paintWho();
+function login() { location.href = "https://oauth.yandex.ru/authorize?response_type=token&client_id=" + CLIENT_ID + "&redirect_uri=" + encodeURIComponent(HERE); }
+function logout() { S.token = ""; LS.set("token", undefined); draw(); }
+async function ya(path) {
+  const r = await fetch(API + path, { headers: { Authorization: "OAuth " + S.token } });
+  if (r.status === 401) { logout(); throw new Error("нужно войти заново"); }
+  return r;
+}
+async function getFile(name) {
+  const r = await ya("/resources/download?path=" + encodeURIComponent("app:/" + name));
+  if (r.status === 404) return null;
+  if (!r.ok) throw new Error("Диск: " + r.status);
+  const { href } = await r.json();
+  const f = await fetch(href, { referrerPolicy: "no-referrer", cache: "no-store" });
+  if (!f.ok) throw new Error("Диск: файл " + f.status);
+  return await f.text();
+}
+async function putFile(name, text) {
+  const r = await ya("/resources/upload?overwrite=true&path=" + encodeURIComponent("app:/" + name));
+  if (!r.ok) throw new Error("Диск: " + r.status);
+  const { href, method } = await r.json();
+  const u = await fetch(href, { method: method || "PUT", body: new Blob([text], { type: "application/octet-stream" }) });
+  if (!(u.ok || u.status === 201 || u.status === 202)) throw new Error("Диск: запись " + u.status);
+}
 
-const auth = (redirect) => location.href = "https://oauth.yandex.ru/authorize?response_type=token&client_id=" + CLIENT_ID + "&redirect_uri=" + encodeURIComponent(redirect) + "&force_confirm=no";
-$("login").onclick = () => auth(HERE);
-$("login2").onclick = () => auth("https://oauth.yandex.ru/verification_code");
-$("logout").onclick = () => { store.set("ya_token", ""); $("tok").value = ""; paintWho(); };
+// ---------- the effective picture = PC data + my marks not yet applied
+function applied() { return (S.kino && S.kino.marks_applied) || ""; }
+function pending() { const a = applied(); return S.ops.filter(o => o.at > a); }
+function titles() {
+  const k = S.kino; if (!k) return [];
+  const map = {};
+  const list = (k.titles || []).map(t => { const c = Object.assign({}, t); c.seen = {}; for (const e of t.eps || []) if (e[3]) c.seen[e[0] + "x" + e[1]] = 1; map[c.id] = c; return c; });
+  for (const o of pending()) {
+    const t = map[o.id]; if (!t) continue;
+    if (o.ep !== undefined) { if (o.seen) t.seen[o.ep] = 1; else delete t.seen[o.ep]; }
+    if (o.status) t.status = o.status;
+  }
+  return list;
+}
+const eps = (t) => (t.eps || []).map(e => ({ s: e[0], e: e[1], air: e[2] || "", title: e[4] || "", k: e[0] + "x" + e[1] }));
+function info(t) {
+  const d = today(), all = eps(t);
+  const aired = all.filter(e => e.air && e.air <= d);
+  const unseen = aired.filter(e => !t.seen[e.k]);
+  const next = all.find(e => !t.seen[e.k]) || null;
+  const lastNew = unseen.length ? unseen[unseen.length - 1].air : "";
+  return { all, aired, unseen, next, lastNew, seen: all.filter(e => t.seen[e.k]).length };
+}
+function posterEl(p, t, big) {
+  const e = h(p, "div", "pst" + (big ? " big" : ""));
+  const src = S.posters[t.id];
+  if (src) e.style.backgroundImage = "url(" + src + ")"; else e.textContent = (t.title || "?").trim()[0] || "?";
+  return e;
+}
 
-const CHECKS = [
-  ["folder", "Папка приложения на Диске видна"],
-  ["write", "Запись файла на Диск"],
-  ["read", "Чтение файла с Диска"],
-  ["myshows", "MyShows отвечает прямо с телефона"],
-];
-function paint(state) {
-  const box = $("checks"); box.innerHTML = "";
-  for (const [k, title] of CHECKS) {
-    const s = state[k] || {};
-    const r = document.createElement("div"); r.className = "row";
-    r.innerHTML = `<span class="dot ${s.c || ""}"></span><div><b></b><small></small></div>`;
-    r.querySelector("b").textContent = title; r.querySelector("small").textContent = s.t || "";
-    box.appendChild(r);
+// ---------- marks: saved on the phone at once, sent to the Disk a moment later
+function addOp(op) {
+  op.at = new Date().toISOString();
+  S.ops.push(op); LS.set("ops", S.ops);
+  clearTimeout(S.pushT); S.pushT = setTimeout(pushOps, 1200);
+}
+async function pushOps() {
+  if (!S.token || S.pushing) return;
+  const mine = pending(); if (!mine.length) return;
+  S.pushing = true; setSync("run");
+  try {
+    let cur = { ops: [] };
+    try { const t = await getFile("marks.json"); if (t) cur = JSON.parse(t); } catch (e) { if (/войти/.test(e.message)) throw e; }
+    const a = applied();
+    const keep = (cur.ops || []).filter(o => o.at > a);
+    const seen = new Set(keep.map(o => o.at + o.id + (o.ep || "") + (o.status || "")));
+    for (const o of mine) if (!seen.has(o.at + o.id + (o.ep || "") + (o.status || ""))) keep.push(o);
+    keep.sort((x, y) => x.at < y.at ? -1 : 1);
+    await putFile("marks.json", JSON.stringify({ ops: keep }));
+    S.ops = keep.slice(); LS.set("ops", S.ops);
+    setSync("ok");
+  } catch (e) { setSync("bad", e.message); }
+  S.pushing = false;
+}
+function markEp(t, list, on) {
+  for (const e of list) addOp({ id: t.id, ep: e.k, seen: on });
+  if (on && t.status !== "watching" && t.status !== "watched") addOp({ id: t.id, status: "watching" });
+  draw();
+}
+function setStatus(t, st) { if (t.status === st) return; addOp({ id: t.id, status: st }); draw(); }
+
+// ---------- loading from the Disk
+async function load(quiet) {
+  if (!S.token) return;
+  setSync("run");
+  try {
+    const t = await getFile("kino.json");
+    if (t) {
+      const k = JSON.parse(t);
+      const pv = S.kino && S.kino.posters_ver;
+      S.kino = k; LS.set("kino", k);
+      if (k.posters_ver && k.posters_ver !== pv || !Object.keys(S.posters).length) {
+        const p = await getFile("posters.json");
+        if (p) { S.posters = JSON.parse(p); LS.set("posters", S.posters); }
+      }
+      S.ops = S.ops.filter(o => o.at > applied()); LS.set("ops", S.ops);
+    }
+    const ph = await getFile("phone.json");
+    if (ph) { S.phone = Object.assign({ order: [], homeSort: "new" }, JSON.parse(ph)); LS.set("phone", S.phone); }
+    setSync("ok");
+    if (pending().length) pushOps();
+  } catch (e) { setSync("bad", e.message); }
+  draw();
+}
+async function savePhone() { LS.set("phone", S.phone); try { await putFile("phone.json", JSON.stringify(S.phone)); } catch (e) { setSync("bad", e.message); } }
+function setSync(s, err) { S.sync = s; S.syncErr = err || ""; const d = $("#sync"); if (d) { d.className = "sync " + s; d.title = err || ""; } }
+
+// ---------- drawing
+function drawTop() {
+  const top = $("#top"); top.innerHTML = "";
+  for (const [id, label, icon] of [["home", "Главная", "home"], ["series", "Сериалы", "tv"], ["movies", "Фильмы", "film"]]) {
+    const b = h(top, "button", "tb" + (S.tab === id && !S.open ? " on" : "")); b.innerHTML = ic(icon); h(b, "span", "lb", label);
+    b.onclick = () => { S.tab = id; S.open = null; LS.set("tab", id); draw(); scrollTo(0, 0); };
+  }
+  h(top, "div", "grow");
+  const d = h(top, "span", "sync " + S.sync); d.id = "sync"; d.title = S.syncErr;
+  const g = h(top, "button", "tb" + (S.tab === "gear" && !S.open ? " on" : "")); g.innerHTML = ic("gear");
+  g.onclick = () => { S.tab = "gear"; S.open = null; draw(); scrollTo(0, 0); };
+}
+function draw() {
+  const app = $("#app"); app.innerHTML = "";
+  $("#top").style.display = S.token ? "" : "none";
+  if (!S.token) return drawLogin(app);
+  drawTop();
+  const pg = h(app, "div", "page");
+  if (!S.kino) { h(pg, "div", "empty", S.sync === "run" ? "Загружаю…" : "Данных пока нет: компьютер ещё не прислал список. Открой «Кино» в Obsidian — он отправит."); if (S.syncErr) h(pg, "div", "note", S.syncErr); return; }
+  if (S.open) return drawSeries(pg, titles().find(t => t.id === S.open));
+  if (S.tab === "home") drawHome(pg);
+  else if (S.tab === "series") drawSeriesList(pg);
+  else if (S.tab === "movies") drawMovies(pg);
+  else drawGear(pg);
+}
+function drawLogin(app) {
+  const b = h(app, "div", "login");
+  h(b, "h1", "", "Мнемозина Кино");
+  h(b, "p", "", "Серии и фильмы из твоей библиотеки. Данные — в папке приложения на твоём Яндекс Диске.");
+  const l = h(b, "button", "wide acc", "Войти через Яндекс"); l.onclick = login;
+}
+function order(list) {
+  const o = S.phone.order || [];
+  const pos = (t) => { const i = o.indexOf(t.id); return i < 0 ? 1e6 : i; };
+  return list.slice().sort((a, b) => pos(a) - pos(b));
+}
+function drawHome(pg) {
+  const all = titles();
+  const ser = all.filter(t => t.kind === "series" && t.status === "watching");
+  // new: unseen episodes that are already out
+  let fresh = ser.map(t => ({ t, i: info(t) })).filter(x => x.i.unseen.length);
+  if (S.phone.homeSort === "mine") { const o = order(fresh.map(x => x.t)); fresh.sort((a, b) => o.indexOf(a.t) - o.indexOf(b.t)); }
+  else fresh.sort((a, b) => (b.i.lastNew > a.i.lastNew ? 1 : b.i.lastNew < a.i.lastNew ? -1 : 0));
+  h(pg, "h2", "", "Новые серии");
+  if (!fresh.length) h(pg, "div", "empty", "Всё посмотрено");
+  for (const { t, i } of fresh) {
+    const c = h(pg, "div", "nc");
+    posterEl(c, t);
+    const m = h(c, "div", "mid");
+    h(m, "div", "t", t.title);
+    const n = i.unseen[0];
+    const s = h(m, "div", "s"); s.innerHTML = "<b>" + n.s + "×" + pad(n.e) + "</b> · " + dShort(n.air);
+    if (i.unseen.length > 1) h(s, "span", "badge", "+" + (i.unseen.length - 1));
+    m.onclick = c.firstChild.onclick = () => openSeries(t.id);
+    const ck = h(c, "button", "chk"); ck.innerHTML = ic("check"); ck.setAttribute("aria-label", "Посмотрел " + n.s + "×" + n.e);
+    ck.onclick = () => { ck.classList.add("on"); setTimeout(() => markEp(t, [n], true), 180); };
+  }
+  // soon: next 14 days, watching + planned
+  const d0 = today(), d1 = ymd(new Date(Date.now() + 14 * 864e5));
+  const soon = [];
+  for (const t of all.filter(t => t.kind === "series" && (t.status === "watching" || t.status === "planned")))
+    for (const e of eps(t)) if (e.air > d0 && e.air <= d1) soon.push({ t, e });
+  for (const t of all.filter(t => t.kind === "movie" && t.release && t.release > d0 && t.release <= d1)) soon.push({ t, e: null });
+  soon.sort((a, b) => ((a.e ? a.e.air : a.t.release) < (b.e ? b.e.air : b.t.release) ? -1 : 1));
+  if (soon.length) {
+    h(pg, "h2", "", "Скоро выйдут");
+    const box = h(pg, "div", "box");
+    for (const { t, e } of soon.slice(0, 12)) {
+      const r = h(box, "div", "soon");
+      h(r, "span", "d", dSoon(e ? e.air : t.release));
+      h(r, "span", "t", t.title);
+      h(r, "span", "e", e ? e.s + "×" + pad(e.e) : "фильм");
+      r.onclick = () => { if (e) openSeries(t.id); };
+    }
   }
 }
-paint({});
-
-async function run() {
-  const st = {}; const set = (k, c, t) => { st[k] = { c, t }; paint(st); };
-  const t = token();
-  if (!t) { alert("Сначала войди через Яндекс"); return; }
-  const H = { Authorization: "OAuth " + t };
-  const why = async (r) => { let x = ""; try { x = (await r.json()).description || ""; } catch (e) { } return "ответ " + r.status + (x ? " · " + x : ""); };
-  // 1. app folder
-  set("folder", "run", "проверяю…");
-  try {
-    const r = await fetch(API + "/resources?path=" + encodeURIComponent("app:/"), { headers: H });
-    if (r.ok || r.status === 404) set("folder", "ok", r.ok ? "папка есть" : "папки ещё нет — появится после записи");
-    else { set("folder", "bad", await why(r)); return; }
-  } catch (e) { set("folder", "bad", "браузер не пустил запрос: " + e.message); return; }
-  // 2. write a small file
-  const body = JSON.stringify({ test: true, at: new Date().toISOString(), from: navigator.userAgent.slice(0, 60) });
-  set("write", "run", "записываю…");
-  try {
-    const r = await fetch(API + "/resources/upload?overwrite=true&path=" + encodeURIComponent("app:/test.json"), { headers: H });
-    if (!r.ok) { set("write", "bad", "ссылка для записи: " + await why(r)); return; }
-    const { href, method } = await r.json();
-    const u = await fetch(href, { method: method || "PUT", body: new Blob([body], { type: "application/octet-stream" }) });
-    if (u.ok || u.status === 201 || u.status === 202) set("write", "ok", "test.json записан в «Приложения / Мнемозина Кино»");
-    else { set("write", "bad", "запись: ответ " + u.status); return; }
-  } catch (e) { set("write", "bad", "браузер не пустил запись: " + e.message); return; }
-  // 3. read it back
-  set("read", "run", "читаю…");
-  try {
-    const r = await fetch(API + "/resources/download?path=" + encodeURIComponent("app:/test.json"), { headers: H });
-    if (!r.ok) { set("read", "bad", "ссылка для чтения: " + await why(r)); return; }
-    const { href } = await r.json();
-    const d = await fetch(href, { referrerPolicy: "no-referrer" });
-    const txt = await d.text();
-    set("read", txt === body ? "ok" : "bad", txt === body ? "прочитан тот же файл" : "прочитано не то: " + txt.slice(0, 80));
-  } catch (e) { set("read", "bad", "браузер не пустил чтение: " + e.message); }
-  // 4. MyShows (not required: the computer can bring its data)
-  set("myshows", "run", "спрашиваю…");
-  try {
-    const r = await fetch("https://myshows.me/v3/rpc/", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", method: "shows.GetById", params: { showId: 1, withEpisodes: false }, id: 1 }) });
-    const j = await r.json();
-    set("myshows", j && j.result ? "ok" : "bad", j && j.result ? "отвечает: " + (j.result.title || j.result.titleOriginal || "есть данные") : "ответ без данных");
-  } catch (e) { set("myshows", "bad", "не пускает с телефона — не страшно, данные принесёт компьютер"); }
+function chipRow(pg, keys, cur, counts, onPick) {
+  const row = h(pg, "div", "chips");
+  for (const k of keys) {
+    const c = h(row, "button", "chip" + (cur === k ? " on" : ""), ST[k]);
+    if (counts[k]) h(c, "i", "", String(counts[k]));
+    c.onclick = () => onPick(k);
+  }
 }
-$("run").onclick = run;
+function drawSeriesList(pg) {
+  const ser = titles().filter(t => t.kind === "series");
+  const cnt = {}; for (const t of ser) cnt[t.status] = (cnt[t.status] || 0) + 1;
+  chipRow(pg, ST_SERIES, S.serChip, cnt, (k) => { S.serChip = k; LS.set("serChip", k); draw(); });
+  let list = ser.filter(t => t.status === S.serChip);
+  list = S.serChip === "watching" ? order(list) : list.sort((a, b) => a.title.localeCompare(b.title, "ru"));
+  if (!list.length) h(pg, "div", "empty", "Пусто");
+  for (const t of list) {
+    const i = info(t);
+    const r = h(pg, "div", "row");
+    posterEl(r, t);
+    const m = h(r, "div", "mid");
+    const tt = h(m, "div", "t", t.title);
+    if (i.unseen.length) h(tt, "span", "badge", String(i.unseen.length));
+    h(m, "div", "s", i.seen + " из " + i.all.length + (t.ended ? " · закончен" : ""));
+    const pb = h(m, "div", "pbar"); h(pb, "i").style.width = (i.all.length ? Math.round(i.seen / i.all.length * 100) : 0) + "%";
+    const a = h(r, "span", "arrow"); a.innerHTML = ic("right");
+    r.onclick = () => openSeries(t.id);
+  }
+}
+function openSeries(id) { S.open = id; S.season = null; draw(); scrollTo(0, 0); }
+function drawSeries(pg, t) {
+  if (!t) { S.open = null; return draw(); }
+  const bk = h(pg, "button", "back"); bk.innerHTML = ic("left") + "Назад"; bk.onclick = () => { S.open = null; draw(); };
+  const i = info(t);
+  const hero = h(pg, "div", "hero");
+  posterEl(hero, t, true);
+  const hm = h(hero, "div", "");
+  h(hm, "h1", "", t.title);
+  h(hm, "div", "s", [t.year, i.seen + " из " + i.all.length + " серий", t.ended ? "закончен" : ""].filter(Boolean).join(" · "));
+  const ss = h(pg, "div", "stsel");
+  for (const k of ST_SERIES) {
+    const c = h(ss, "button", "chip" + (t.status === k ? " on" : ""), ST[k]);
+    if (t.status === k) c.style.background = "var(--st-" + k + ")";
+    c.onclick = () => setStatus(t, k);
+  }
+  const seasons = [...new Set(i.all.map(e => e.s))];
+  if (S.season == null) S.season = i.next ? i.next.s : seasons[seasons.length - 1];
+  if (seasons.length > 1) {
+    const sr = h(pg, "div", "seas");
+    for (const s of seasons) { const c = h(sr, "button", "chip" + (s === S.season ? " on" : ""), "Сезон " + s); c.onclick = () => { S.season = s; draw(); }; }
+  }
+  const box = h(pg, "div", "box");
+  const d = today();
+  for (const e of i.all.filter(e => e.s === S.season)) {
+    const out = e.air && e.air <= d;
+    const r = h(box, "div", "ep" + (out ? "" : " future"));
+    h(r, "span", "n", String(e.e));
+    const m = h(r, "div", "mid");
+    h(m, "div", "t", e.title || "Серия " + e.e);
+    h(m, "div", "d", e.air ? (out ? dShort(e.air) : "выйдет " + dSoon(e.air)) : "дата неизвестна");
+    const on = !!t.seen[e.k];
+    const ck = h(r, "button", "chk" + (on ? " on" : "")); ck.innerHTML = ic("check");
+    if (!out && !on) { ck.disabled = true; ck.style.opacity = ".35"; continue; }
+    ck.onclick = () => {
+      if (on) return markEp(t, [e], false);
+      const prev = i.all.filter(x => (x.s < e.s || (x.s === e.s && x.e < e.e)) && !t.seen[x.k] && x.air && x.air <= d);
+      if (!prev.length) return markEp(t, [e], true);
+      ask("Отметить и предыдущие?", "Не отмечено раньше: " + prev.length, [["Все до этой", () => markEp(t, prev.concat([e]), true)], ["Только эту", () => markEp(t, [e], true)]]);
+    };
+  }
+  if (!i.all.length) h(pg, "div", "empty", "Серий пока нет");
+}
+function drawMovies(pg) {
+  const mv = titles().filter(t => t.kind === "movie");
+  const cnt = {}; for (const t of mv) cnt[t.status] = (cnt[t.status] || 0) + 1;
+  chipRow(pg, ST_MOVIE, S.movChip, cnt, (k) => { S.movChip = k; LS.set("movChip", k); draw(); });
+  const list = mv.filter(t => t.status === S.movChip).sort((a, b) => a.title.localeCompare(b.title, "ru"));
+  if (!list.length) h(pg, "div", "empty", "Пусто");
+  for (const t of list) {
+    const r = h(pg, "div", "row");
+    posterEl(r, t);
+    const m = h(r, "div", "mid");
+    h(m, "div", "t", t.title);
+    h(m, "div", "s", [t.year, t.release && t.release > today() ? "выйдет " + dShort(t.release) : ""].filter(Boolean).join(" · "));
+    const done = t.status === "watched";
+    const b = h(r, "button", "mbtn" + (done ? " on" : ""), done ? "✓ Смотрел" : "Смотрел");
+    b.onclick = () => setStatus(t, done ? "planned" : "watched");
+  }
+}
+function drawGear(pg) {
+  h(pg, "h2", "", "Главная: порядок новых серий");
+  const sg = h(pg, "div", "seg");
+  for (const [k, l] of [["new", "Сначала новые"], ["mine", "Мой порядок"]]) {
+    const b = h(sg, "button", S.phone.homeSort === k ? "on" : "", l);
+    b.onclick = () => { S.phone.homeSort = k; savePhone(); draw(); };
+  }
+  h(pg, "h2", "", "Мой порядок отслеживания");
+  const ser = order(titles().filter(t => t.kind === "series" && t.status === "watching"));
+  if (!ser.length) h(pg, "div", "note", "Нет сериалов со статусом «Смотрю»");
+  else {
+    const box = h(pg, "div", "set");
+    ser.forEach((t, idx) => {
+      const it = h(box, "div", "it");
+      h(it, "span", "t", t.title);
+      const mv = (dir) => { const ids = ser.map(x => x.id); const j = idx + dir; [ids[idx], ids[j]] = [ids[j], ids[idx]]; S.phone.order = ids; savePhone(); draw(); };
+      const u = h(it, "button", "ord"); u.innerHTML = ic("up"); u.disabled = idx === 0; u.onclick = () => mv(-1);
+      const dn = h(it, "button", "ord"); dn.innerHTML = ic("down"); dn.disabled = idx === ser.length - 1; dn.onclick = () => mv(1);
+    });
+  }
+  h(pg, "h2", "", "Синхронизация");
+  const k = S.kino || {};
+  h(pg, "div", "note", "Список с компьютера: " + (k.updated ? k.updated.replace("T", " ") : "—") + " · ещё не принял компьютер: " + pending().length);
+  if (S.syncErr) h(pg, "div", "note", "Ошибка: " + S.syncErr);
+  const rb = h(pg, "button", "wide", "Обновить сейчас"); rb.onclick = () => load();
+  const lo = h(pg, "button", "wide red", "Выйти из Яндекса"); lo.onclick = () => ask("Выйти?", "Отметки, которые ещё не ушли, останутся на телефоне.", [["Выйти", logout]]);
+  h(pg, "div", "note", "Версия " + VERSION);
+}
+function ask(q, q2, actions) {
+  const bg = h(document.body, "div", "sheet-bg"); const sh = h(bg, "div", "sheet");
+  h(sh, "div", "q", q); if (q2) h(sh, "div", "q2", q2);
+  actions.forEach(([l, fn], i) => { const b = h(sh, "button", "wide" + (i === 0 ? " acc" : ""), l); b.onclick = () => { bg.remove(); fn(); }; });
+  const c = h(sh, "button", "wide", "Отмена"); c.onclick = () => bg.remove();
+  bg.onclick = (e) => { if (e.target === bg) bg.remove(); };
+}
+
+// ---------- start
+draw();
+load();
+document.addEventListener("visibilitychange", () => { if (!document.hidden) load(true); });   // back to the app → fresh data
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => { });
 </script>
 </body>
 </html>
