@@ -114,6 +114,19 @@ h2:first-child{margin-top:4px}
 .hr .chk{width:42px;height:42px}.hr .chk svg{width:20px;height:20px}
 .calm{color:var(--mut);background:var(--card);border-radius:var(--r);padding:16px;text-align:center;font-size:15px}
 .linkb{display:block;margin:10px auto 0;color:var(--acc2);font-weight:600;font-size:14px;height:36px}
+/* links v0.4 */
+.pastebtn{height:56px;display:flex;align-items:center;justify-content:center;gap:10px;font-size:17px;margin-top:4px}
+.pastebtn svg{width:22px;height:22px}
+.lrow{display:flex;gap:8px;margin-top:10px}
+.linp{flex:1;min-width:0;height:44px;border-radius:12px;border:1px solid var(--line);background:var(--card);color:var(--tx);padding:0 12px;font:inherit;font-size:15px}
+.lrow .mbtn{height:44px}
+.lk{padding:10px 0;border-bottom:1px solid var(--line)}
+.lk:last-child{border-bottom:0}
+.lt{font-size:14px;color:var(--mut)}.lt b{color:var(--tx);font-weight:600}
+.lu{font-size:15px;margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ls{font-size:13px;margin-top:3px;display:flex;align-items:center;gap:6px;color:var(--mut)}
+.ls i{width:7px;height:7px;border-radius:50%;display:block;background:var(--faint)}
+.ls.ok i{background:var(--ok)}.ls.bad i{background:var(--bad)}.ls.wait i{background:var(--warn)}
 /* calendar */
 .cal-h{display:flex;align-items:center;gap:8px;margin:2px 0 8px}
 .cal-h .m{flex:1;font-size:18px;font-weight:700;text-transform:capitalize}
@@ -178,7 +191,7 @@ h2:first-child{margin-top:4px}
 //   app:/phone.json  — phone settings (order of tracking, home sorting)
 // The PC is the master copy. Technical notes: DATA/SYSTEM/_CORE_PHONE.md «Техническая часть».
 // ======================================================================================================
-const VERSION = "0.3.0";
+const VERSION = "0.4.0";
 const CLIENT_ID = "9823dc5712e243f1978ba0f4f2f7d76a";
 const API = "https://cloud-api.yandex.net/v1/disk";
 const HERE = location.origin + location.pathname;
@@ -211,6 +224,8 @@ const SVG = {
   check: '<path d="M20 6 9 17l-5-5"/>',
   right: '<path d="m9 18 6-6-6-6"/>', left: '<path d="m15 18-6-6 6-6"/>',
   up: '<path d="m18 15-6-6-6 6"/>', down: '<path d="m6 9 6 6 6-6"/>',
+  link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+  paste: '<rect x="8" y="2" width="8" height="4" rx="1"/><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"/>',
   cal: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
 };
 const ic = (name) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + SVG[name] + "</svg>";
@@ -225,6 +240,8 @@ const S = {
   phone: LS.get("phone", { order: [], homeSort: "new" }),
   tab: LS.get("tab", "home"),
   serChip: LS.get("serChip", "watching"), movChip: LS.get("movChip", "planned"),
+  links: LS.get("links", []),          // links I sent (last 30, for the list) — {at, url, kind, dest}
+  lstat: LS.get("lstat", { applied: "", items: [] }),   // what the PC did with them (links_status.json)
   open: null, season: null,            // open series screen
   sync: "", syncErr: "",
 };
@@ -351,10 +368,13 @@ async function load(quiet) {
       }
       S.ops = S.ops.filter(o => o.at > applied()); LS.set("ops", S.ops);
     }
+    const ls = await getFile("links_status.json");
+    if (ls) { S.lstat = JSON.parse(ls); LS.set("lstat", S.lstat); }
     const ph = await getFile("phone.json");
     if (ph) { S.phone = Object.assign({ order: [], homeSort: "new" }, JSON.parse(ph)); LS.set("phone", S.phone); }
     setSync("ok");
     if (pending().length) pushOps();
+    if (linksPending().length) pushLinks();
   } catch (e) { setSync("bad", e.message); }
   draw();
 }
@@ -381,7 +401,7 @@ function syncText() {
 // ---------- drawing
 function drawTop() {
   const top = $("#top"); top.innerHTML = "";
-  for (const [id, label, icon] of [["home", "Главная", "home"], ["series", "Сериалы", "tv"], ["movies", "Фильмы", "film"], ["cal", "Календарь", "cal"]]) {
+  for (const [id, label, icon] of [["home", "Главная", "home"], ["series", "Сериалы", "tv"], ["movies", "Фильмы", "film"], ["cal", "Календарь", "cal"], ["links", "Ссылки", "link"]]) {
     const b = h(top, "button", "tb" + (S.tab === id && !S.open ? " on" : "")); b.innerHTML = ic(icon); h(b, "span", "lb", label);
     b.onclick = () => { S.tab = id; S.open = null; LS.set("tab", id); draw(); scrollTo(0, 0); };
   }
@@ -397,12 +417,14 @@ function draw() {
   if (!S.token) return drawLogin(app);
   drawTop();
   const pg = h(app, "div", "page");
+  if (S.tab === "links") return drawLinks(pg);
   if (!S.kino) { h(pg, "div", "empty", S.sync === "run" ? "Загружаю…" : "Данных пока нет: компьютер ещё не прислал список. Открой «Кино» в Obsidian — он отправит."); if (S.syncErr) h(pg, "div", "note", S.syncErr); return; }
   if (S.open) return drawSeries(pg, titles().find(t => t.id === S.open));
   if (S.tab === "home") drawHome(pg);
   else if (S.tab === "series") drawSeriesList(pg);
   else if (S.tab === "movies") drawMovies(pg);
   else if (S.tab === "cal") drawCal(pg);
+  else if (S.tab === "links") return drawLinks(pg);
   else drawGear(pg);
 }
 function drawLogin(app) {
@@ -641,6 +663,91 @@ function drawCal(pg) {
     ck.onclick = () => markEp(t, [e], !on);
   }
 }
+
+// ---------- Ссылки (v0.4): links for the PC — copy a link anywhere, open the app, «Вставить».
+// app:/links.json {items:[{at, url, kind, dest}]} — only links the PC has not taken yet (older than links_status.applied are
+// dropped on the next write, so the file stays tiny). The PC answers in app:/links_status.json {applied, items:[{at, url, state}] last 50}.
+// kind: instagram | twitter | youtube (dest video | clip | bookmark) | kino | other (dest video | inbox)
+function linkKind(u) {
+  if (/instagram\.com\//i.test(u)) return "instagram";
+  if (/(?:^|\/\/|\.)(?:x|twitter)\.com\//i.test(u)) return "twitter";
+  if (/youtube\.com|youtu\.be/i.test(u)) return "youtube";
+  if (/myshows\.me\/(view|movie)\/|kinopoisk\.ru\/(film|series)\//i.test(u)) return "kino";
+  return "other";
+}
+// clean link: Instagram / X lose «?img_index=1» and the like (the post stays the same); YouTube keeps ?v=
+function cleanLink(u) { u = u.replace(/[.,;)]+$/, ""); return /instagram\.com|(?:x|twitter)\.com/i.test(u) ? u.replace(/[?#].*$/, "") : u; }
+const shortLink = (u) => String(u || "").replace(/^https?:\/\/(www\.|m\.)?/i, "").replace(/[?#].*$/, "").replace(/\/+$/, "");
+const KIND_RU = { instagram: "Инстаграм", twitter: "X", youtube: "YouTube", kino: "Кино", other: "Ссылка" };
+const DEST_RU = { video: "скачать видео", clip: "клип", bookmark: "в закладки", inbox: "во «Входящие»" };
+function linksPending() { const a = (S.lstat && S.lstat.applied) || ""; return S.links.filter(x => x.at > a); }
+function addLink(url, kind, dest) {
+  const at = new Date().toISOString();
+  S.links = [{ at, url, kind, dest: dest || "" }].concat(S.links.filter(x => x.url !== url || x.at > ((S.lstat && S.lstat.applied) || ""))).slice(0, 30);
+  LS.set("links", S.links);
+  clearTimeout(S.linkT); S.linkT = setTimeout(pushLinks, 800);
+}
+async function pushLinks() {
+  if (!S.token || S.pushingL) return;
+  const mine = linksPending(); if (!mine.length) return;
+  S.pushingL = true; setSync("run");
+  try {
+    let cur = { items: [] };
+    try { const t = await getFile("links.json"); if (t) cur = JSON.parse(t); } catch (e) { if (/войти/.test(e.message)) throw e; }
+    const a = (S.lstat && S.lstat.applied) || "";
+    const keep = (cur.items || []).filter(x => x.at > a);
+    const have = new Set(keep.map(x => x.at + x.url));
+    for (const x of mine) if (!have.has(x.at + x.url)) keep.push(x);
+    keep.sort((x, y) => x.at < y.at ? -1 : 1);
+    await putFile("links.json", JSON.stringify({ items: keep }));
+    setSync("ok");
+  } catch (e) { setSync("bad", e.message); }
+  S.pushingL = false;
+  if (S.tab === "links") draw();
+}
+function stateOf(x) {
+  const st = (S.lstat.items || []).find(y => y.at === x.at && y.url === x.url);
+  if (st) return { t: st.state, ok: !/не |ошибк/i.test(st.state) };
+  if (x.at <= ((S.lstat && S.lstat.applied) || "")) return { t: "принято компьютером", ok: true };
+  return { t: "ждёт компьютер", wait: true };
+}
+function takeText(text) {
+  const urls = [...new Set((String(text || "").match(/https?:\/\/[^\s<>"']+/gi) || []).map(cleanLink))];
+  if (!urls.length) { toast("В буфере нет ссылки"); return; }
+  const ask1 = (i) => {
+    if (i >= urls.length) { draw(); return; }
+    const u = urls[i], k = linkKind(u);
+    if (k === "youtube") return ask("YouTube — куда?", shortLink(u), [["Скачать видео", () => { addLink(u, k, "video"); done(i); }], ["Клип", () => { addLink(u, k, "clip"); done(i); }], ["В закладки", () => { addLink(u, k, "bookmark"); done(i); }]], () => ask1(i + 1));
+    if (k === "other") return ask("Что сделать со ссылкой?", shortLink(u), [["Скачать видео", () => { addLink(u, k, "video"); done(i); }], ["Во «Входящие»", () => { addLink(u, k, "inbox"); done(i); }]], () => ask1(i + 1));
+    addLink(u, k, ""); done(i);
+  };
+  const done = (i) => { toast(urls.length > 1 ? "Записано " + (i + 1) + " из " + urls.length : "Ссылка записана"); ask1(i + 1); };
+  ask1(0);
+}
+async function pasteNow() {
+  let t = "";
+  try { t = await navigator.clipboard.readText(); } catch (e) { toast("Телефон не дал прочитать буфер — вставь ссылку в поле ниже"); return; }
+  takeText(t);
+}
+function drawLinks(pg) {
+  const b = h(pg, "button", "wide acc pastebtn"); b.innerHTML = ic("paste") + "<span>Вставить из буфера</span>"; b.onclick = pasteNow;
+  const row = h(pg, "div", "lrow");
+  const inp = h(row, "input", "linp"); inp.placeholder = "или вставь ссылку сюда"; inp.autocapitalize = "off"; inp.autocomplete = "off"; inp.spellcheck = false;
+  const ok = h(row, "button", "mbtn", "Добавить"); ok.onclick = () => { const v = inp.value; inp.value = ""; takeText(v); };
+  inp.onkeydown = (e) => { if (e.key === "Enter") ok.click(); };
+  h(pg, "div", "note", "Компьютер заберёт ссылки, когда открыта главная в Obsidian. Инстаграм и X встанут в списки — качать кнопкой «Скачать» на ПК.");
+  const hd = h(pg, "div", "hhead"); h(hd, "h2", "", "Последние");
+  const n = linksPending().length; if (n) h(hd, "span", "cnt", "ждут: " + n);
+  if (!S.links.length) { h(pg, "div", "calm", "Пока ничего не отправлено"); return; }
+  const box = h(pg, "div", "box hb");
+  for (const x of S.links) {
+    const r = h(box, "div", "lk");
+    const top = h(r, "div", "lt"); h(top, "b", "", KIND_RU[x.kind] || "Ссылка"); if (x.dest) top.append(" · " + DEST_RU[x.dest]);
+    h(r, "div", "lu", shortLink(x.url));
+    const st = stateOf(x); const s = h(r, "div", "ls" + (st.wait ? " wait" : st.ok ? " ok" : " bad"), st.t);
+    s.prepend(h(null, "i"));
+  }
+}
 function drawGear(pg) {
   h(pg, "h2", "", "Главная: порядок новых серий");
   const sg = h(pg, "div", "seg");
@@ -667,12 +774,12 @@ function drawGear(pg) {
   const lo = h(pg, "button", "wide red", "Выйти из Яндекса"); lo.onclick = () => ask("Выйти?", "Отметки, которые ещё не ушли, останутся на телефоне.", [["Выйти", logout]]);
   h(pg, "div", "note", "Версия " + VERSION);
 }
-function ask(q, q2, actions) {
+function ask(q, q2, actions, onCancel) {
   const bg = h(document.body, "div", "sheet-bg"); const sh = h(bg, "div", "sheet");
   h(sh, "div", "q", q); if (q2) h(sh, "div", "q2", q2);
   actions.forEach(([l, fn], i) => { const b = h(sh, "button", "wide" + (i === 0 ? " acc" : ""), l); b.onclick = () => { bg.remove(); fn(); }; });
-  const c = h(sh, "button", "wide", "Отмена"); c.onclick = () => bg.remove();
-  bg.onclick = (e) => { if (e.target === bg) bg.remove(); };
+  const c = h(sh, "button", "wide", "Отмена"); c.onclick = () => { bg.remove(); if (onCancel) onCancel(); };
+  bg.onclick = (e) => { if (e.target === bg) { bg.remove(); if (onCancel) onCancel(); } };
 }
 
 // ---------- start
