@@ -22,7 +22,9 @@
   --r:14px;--top:calc(env(safe-area-inset-top) + 56px);
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
-html,body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;-webkit-text-size-adjust:100%}
+html,body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.4 -apple-system,BlinkMacSystemFont,system-ui,sans-serif;-webkit-text-size-adjust:100%;touch-action:manipulation}
+*{touch-action:manipulation}
+.cal-grid{touch-action:pan-y}
 body{padding:var(--top) 0 calc(env(safe-area-inset-bottom) + 24px);overscroll-behavior-y:none}
 button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:pointer}
 /* top bar: 3 sections + gear */
@@ -95,6 +97,32 @@ h2:first-child{margin-top:4px}
 .ep.future{opacity:.5}
 .ep .chk{width:38px;height:38px}
 .ep .chk svg{width:18px;height:18px}
+/* calendar */
+.cal-h{display:flex;align-items:center;gap:8px;margin:2px 0 8px}
+.cal-h .m{flex:1;font-size:18px;font-weight:700;text-transform:capitalize}
+.cal-h .nav{width:40px;height:40px;border-radius:12px;background:var(--card);display:flex;align-items:center;justify-content:center;color:var(--mut)}
+.cal-h .nav svg{width:20px;height:20px}
+.cal-h .td{height:40px;padding:0 12px;border-radius:12px;background:var(--card);color:var(--acc2);font-weight:600;font-size:14px}
+.cal-wd{display:grid;grid-template-columns:repeat(7,1fr);text-align:center;font-size:12px;color:var(--faint);font-weight:600;margin-bottom:4px}
+.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:4px;background:var(--card);border-radius:var(--r);padding:6px}
+.cd{height:48px;border-radius:10px;display:flex;flex-direction:column;align-items:center;justify-content:flex-start;padding-top:6px;gap:4px;font-size:15px;font-weight:600;color:var(--tx)}
+.cd.out{color:var(--faint);opacity:.45}
+.cd.today{color:var(--acc2)}
+.cd.sel{background:var(--acc);color:#fff}
+.cd .dots{display:flex;gap:3px;height:6px}
+.cd .dots i{width:6px;height:6px;border-radius:50%;display:block}
+.cd.sel .dots i{box-shadow:0 0 0 1.5px #fff}
+.ev-ep{background:var(--acc)}.ev-season{background:var(--ok)}.ev-movie{background:#e39b3a}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--mut);margin:8px 4px 0}
+.legend span{display:flex;align-items:center;gap:5px}.legend i{width:8px;height:8px;border-radius:50%;display:block}
+.dayh{display:flex;align-items:baseline;gap:8px;margin:18px 4px 8px}
+.dayh b{font-size:17px}.dayh span{color:var(--mut);font-size:14px}
+.evr{display:flex;align-items:center;gap:12px;background:var(--card);border-radius:var(--r);padding:9px 10px;margin-bottom:8px}
+.evr .mid{flex:1;min-width:0}
+.evr .t{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.evr .s{font-size:13px;color:var(--mut);margin-top:2px;display:flex;align-items:center;gap:6px}
+.evr .s i{width:7px;height:7px;border-radius:50%;display:block}
+.evr .chk{width:40px;height:40px}.evr .chk svg{width:18px;height:18px}
 /* settings */
 .set{background:var(--card);border-radius:var(--r);padding:4px 12px;margin-bottom:12px}
 .set .it{display:flex;align-items:center;gap:10px;min-height:48px;border-bottom:1px solid var(--line)}
@@ -133,7 +161,7 @@ h2:first-child{margin-top:4px}
 //   app:/phone.json  — phone settings (order of tracking, home sorting)
 // The PC is the master copy. Technical notes: DATA/SYSTEM/_CORE_PHONE.md «Техническая часть».
 // ======================================================================================================
-const VERSION = "0.1.0";
+const VERSION = "0.2.0";
 const CLIENT_ID = "9823dc5712e243f1978ba0f4f2f7d76a";
 const API = "https://cloud-api.yandex.net/v1/disk";
 const HERE = location.origin + location.pathname;
@@ -164,6 +192,7 @@ const SVG = {
   check: '<path d="M20 6 9 17l-5-5"/>',
   right: '<path d="m9 18 6-6-6-6"/>', left: '<path d="m15 18-6-6 6-6"/>',
   up: '<path d="m18 15-6-6-6 6"/>', down: '<path d="m6 9 6 6 6-6"/>',
+  cal: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
 };
 const ic = (name) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + SVG[name] + "</svg>";
 function toast(t) { const e = h(document.body, "div", "toast", t); setTimeout(() => e.remove(), 2200); }
@@ -224,7 +253,8 @@ function titles() {
   }
   return list;
 }
-const eps = (t) => (t.eps || []).map(e => ({ s: e[0], e: e[1], air: e[2] || "", title: e[4] || "", k: e[0] + "x" + e[1] }));
+// eps rows from the PC: [season, episode, date for me, seen, title, source date, seen date]; «Episode 5» titles are noise
+const eps = (t) => (t.eps || []).map(e => ({ s: e[0], e: e[1], air: e[2] || "", title: /^(Episode|Серия)\s*\d+$/i.test(e[4] || "") ? "" : (e[4] || ""), k: e[0] + "x" + e[1] }));
 function info(t) {
   const d = today(), all = eps(t);
   const aired = all.filter(e => e.air && e.air <= d);
@@ -300,7 +330,7 @@ function setSync(s, err) { S.sync = s; S.syncErr = err || ""; const d = $("#sync
 // ---------- drawing
 function drawTop() {
   const top = $("#top"); top.innerHTML = "";
-  for (const [id, label, icon] of [["home", "Главная", "home"], ["series", "Сериалы", "tv"], ["movies", "Фильмы", "film"]]) {
+  for (const [id, label, icon] of [["home", "Главная", "home"], ["series", "Сериалы", "tv"], ["movies", "Фильмы", "film"], ["cal", "Календарь", "cal"]]) {
     const b = h(top, "button", "tb" + (S.tab === id && !S.open ? " on" : "")); b.innerHTML = ic(icon); h(b, "span", "lb", label);
     b.onclick = () => { S.tab = id; S.open = null; LS.set("tab", id); draw(); scrollTo(0, 0); };
   }
@@ -320,6 +350,7 @@ function draw() {
   if (S.tab === "home") drawHome(pg);
   else if (S.tab === "series") drawSeriesList(pg);
   else if (S.tab === "movies") drawMovies(pg);
+  else if (S.tab === "cal") drawCal(pg);
   else drawGear(pg);
 }
 function drawLogin(app) {
@@ -461,6 +492,71 @@ function drawMovies(pg) {
     b.onclick = () => setStatus(t, done ? "planned" : "watched");
   }
 }
+
+// ---------- calendar: release days of everything in the library (dropped series are left out, like on the PC)
+const MONTHS = ["январь", "февраль", "март", "апрель", "май", "июнь", "июль", "август", "сентябрь", "октябрь", "ноябрь", "декабрь"];
+const MON_G = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
+const WD_FULL = ["воскресенье", "понедельник", "вторник", "среда", "четверг", "пятница", "суббота"];
+function eventsByDay(list) {
+  const map = {};
+  const add = (d, ev) => { if (!d) return; (map[d] = map[d] || []).push(ev); };
+  for (const t of list) {
+    if (t.status === "dropped") continue;
+    if (t.kind === "series") for (const e of eps(t)) add(e.air, { t, e, type: e.e === 1 ? "season" : "ep" });
+    else if (t.release) add(t.release, { t, e: null, type: "movie" });
+  }
+  return map;
+}
+function drawCal(pg) {
+  const list = titles(), map = eventsByDay(list), d0 = today();
+  if (!S.calSel) S.calSel = d0;
+  if (!S.calM) { const t = pd(S.calSel); S.calM = { y: t.getFullYear(), m: t.getMonth() }; }
+  const { y, m } = S.calM;
+  const hd = h(pg, "div", "cal-h");
+  h(hd, "div", "m", MONTHS[m] + " " + y);
+  const go = (k) => { let mm = S.calM.m + k, yy = S.calM.y; if (mm < 0) { mm = 11; yy--; } if (mm > 11) { mm = 0; yy++; } S.calM = { y: yy, m: mm }; draw(); };
+  const tdb = h(hd, "button", "td", "Сегодня"); tdb.onclick = () => { S.calSel = d0; S.calM = null; draw(); };
+  const pv = h(hd, "button", "nav"); pv.innerHTML = ic("left"); pv.onclick = () => go(-1);
+  const nx = h(hd, "button", "nav"); nx.innerHTML = ic("right"); nx.onclick = () => go(1);
+  const wd = h(pg, "div", "cal-wd"); for (const w of ["пн", "вт", "ср", "чт", "пт", "сб", "вс"]) h(wd, "span", "", w);
+  const grid = h(pg, "div", "cal-grid");
+  const first = new Date(y, m, 1), shift = (first.getDay() + 6) % 7;
+  const start = new Date(y, m, 1 - shift);
+  for (let i = 0; i < 42; i++) {
+    const dt = new Date(start.getFullYear(), start.getMonth(), start.getDate() + i), ds = ymd(dt);
+    if (i >= 35 && dt.getMonth() !== m) break;
+    const c = h(grid, "button", "cd" + (dt.getMonth() !== m ? " out" : "") + (ds === d0 ? " today" : "") + (ds === S.calSel ? " sel" : ""), String(dt.getDate()));
+    const evs = map[ds] || [];
+    const dots = h(c, "div", "dots");
+    for (const type of ["season", "ep", "movie"]) if (evs.some(x => x.type === type)) h(dots, "i", "ev-" + type);
+    c.onclick = () => { S.calSel = ds; if (dt.getMonth() !== m) S.calM = { y: dt.getFullYear(), m: dt.getMonth() }; draw(); };
+  }
+  // swipe left / right = month
+  let sx = null;
+  grid.addEventListener("touchstart", (e) => { sx = e.touches[0].clientX; }, { passive: true });
+  grid.addEventListener("touchend", (e) => { if (sx == null) return; const dx = e.changedTouches[0].clientX - sx; sx = null; if (Math.abs(dx) > 50) go(dx < 0 ? 1 : -1); }, { passive: true });
+  const lg = h(pg, "div", "legend");
+  for (const [k, l] of [["ep", "серия"], ["season", "новый сезон"], ["movie", "фильм"]]) { const x = h(lg, "span"); h(x, "i", "ev-" + k); x.append(l); }
+  // the chosen day
+  const sd = pd(S.calSel);
+  const dh = h(pg, "div", "dayh"); h(dh, "b", "", sd.getDate() + " " + MON_G[sd.getMonth()]); h(dh, "span", "", WD_FULL[sd.getDay()] + (S.calSel === d0 ? " · сегодня" : ""));
+  const evs = (map[S.calSel] || []).slice().sort((a, b) => a.t.title.localeCompare(b.t.title, "ru") || (a.e && b.e ? a.e.s - b.e.s || a.e.e - b.e.e : 0));
+  if (!evs.length) h(pg, "div", "empty", "В этот день ничего не выходит");
+  for (const { t, e, type } of evs) {
+    const r = h(pg, "div", "evr");
+    posterEl(r, t);
+    const mid = h(r, "div", "mid");
+    h(mid, "div", "t", t.title);
+    const s = h(mid, "div", "s"); h(s, "i", "ev-" + type);
+    s.append(type === "movie" ? "фильм" : (e.s + "×" + pad(e.e) + (type === "season" ? " · новый сезон" : "") + (e.title ? " · " + e.title : "")));
+    if (type === "movie") { mid.onclick = () => { S.tab = "movies"; draw(); }; continue; }
+    mid.onclick = r.firstChild.onclick = () => { S.season = e.s; S.open = t.id; draw(); scrollTo(0, 0); };
+    const on = !!t.seen[e.k], out = e.air <= d0;
+    const ck = h(r, "button", "chk" + (on ? " on" : "")); ck.innerHTML = ic("check");
+    if (!out && !on) { ck.disabled = true; ck.style.opacity = ".35"; continue; }
+    ck.onclick = () => markEp(t, [e], !on);
+  }
+}
 function drawGear(pg) {
   h(pg, "h2", "", "Главная: порядок новых серий");
   const sg = h(pg, "div", "seg");
@@ -498,6 +594,7 @@ function ask(q, q2, actions) {
 }
 
 // ---------- start
+document.addEventListener("gesturestart", (e) => e.preventDefault());   // no pinch zoom (iOS ignores user-scalable=no)
 draw();
 load();
 document.addEventListener("visibilitychange", () => { if (!document.hidden) load(true); });   // back to the app → fresh data

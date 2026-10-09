@@ -1,0 +1,10 @@
+# Only the phone app goes to GitHub. Everything else in this folder is ignored by default
+# (Windows/Mac junk, editor folders, notes, tests, backups) — add a file here on purpose to publish it.
+/*
+!/.gitignore
+!/README.md
+!/index.html
+!/sw.js
+!/manifest.webmanifest
+!/icon-180.png
+!/icon-512.png

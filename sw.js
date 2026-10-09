@@ -1,6 +1,6 @@
 // Мнемозина Кино — offline shell. The page is taken from the network first (updates arrive at once),
 // the saved copy is used only without internet. Data (Yandex Disk) is never cached here.
-const CACHE = "kino-shell-v1";
+const CACHE = "kino-shell-v2";
 const SHELL = ["./", "./index.html", "./manifest.webmanifest", "./icon-180.png", "./icon-512.png"];
 self.addEventListener("install", (e) => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting())); });
 self.addEventListener("activate", (e) => { e.waitUntil(caches.keys().then(ks => Promise.all(ks.filter(k => k !== CACHE).map(k => caches.delete(k)))).then(() => self.clients.claim())); });
