@@ -34,7 +34,7 @@ button{font:inherit;color:inherit;border:0;background:none;padding:0;cursor:poin
 .tb.on{color:var(--tx);background:var(--card2)}
 .tb .lb{display:none}.tb.on .lb{display:inline}
 .grow{flex:1}
-.sync{width:8px;height:8px;border-radius:50%;background:var(--faint);margin-right:4px}
+.sync{width:8px;height:8px;border-radius:50%;background:var(--faint);margin-right:4px;box-shadow:0 0 0 14px transparent;padding:0}
 .sync.ok{background:var(--ok)}.sync.run{background:var(--warn)}.sync.bad{background:var(--bad)}
 .page{padding:12px 14px 0}
 h2{font-size:13px;font-weight:700;color:var(--mut);text-transform:uppercase;letter-spacing:.05em;margin:18px 4px 8px}
@@ -97,6 +97,23 @@ h2:first-child{margin-top:4px}
 .ep.future{opacity:.5}
 .ep .chk{width:38px;height:38px}
 .ep .chk svg{width:18px;height:18px}
+/* home v0.3 */
+.hhead{display:flex;align-items:center;gap:8px;margin:20px 4px 8px}
+.hhead:first-child{margin-top:4px}
+.hhead h2{margin:0}
+.hhead .cnt{font-size:12px;font-weight:700;color:var(--acc2);background:#8a5cf522;border-radius:8px;padding:1px 7px}
+.dlabel{font-size:14px;font-weight:600;color:var(--tx);margin:12px 4px 6px}
+.hb{padding:0 10px}
+.hr{display:flex;align-items:center;gap:12px;padding:9px 0;border-bottom:1px solid var(--line)}
+.hr:last-child{border-bottom:0}
+.hr .mid{flex:1;min-width:0}
+.hr .t{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hr .s{font-size:13px;color:var(--mut);margin-top:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.hr .s b{color:var(--tx);font-weight:600}
+.hr .pst{width:40px;height:60px;border-radius:7px}
+.hr .chk{width:42px;height:42px}.hr .chk svg{width:20px;height:20px}
+.calm{color:var(--mut);background:var(--card);border-radius:var(--r);padding:16px;text-align:center;font-size:15px}
+.linkb{display:block;margin:10px auto 0;color:var(--acc2);font-weight:600;font-size:14px;height:36px}
 /* calendar */
 .cal-h{display:flex;align-items:center;gap:8px;margin:2px 0 8px}
 .cal-h .m{flex:1;font-size:18px;font-weight:700;text-transform:capitalize}
@@ -161,7 +178,7 @@ h2:first-child{margin-top:4px}
 //   app:/phone.json  — phone settings (order of tracking, home sorting)
 // The PC is the master copy. Technical notes: DATA/SYSTEM/_CORE_PHONE.md «Техническая часть».
 // ======================================================================================================
-const VERSION = "0.2.0";
+const VERSION = "0.3.0";
 const CLIENT_ID = "9823dc5712e243f1978ba0f4f2f7d76a";
 const API = "https://cloud-api.yandex.net/v1/disk";
 const HERE = location.origin + location.pathname;
@@ -170,6 +187,8 @@ const ST_SERIES = ["watching", "planned", "watched", "dropped", "unwatched"];
 const ST_MOVIE = ["planned", "watched", "unwatched"];
 const MON = ["янв", "фев", "мар", "апр", "мая", "июн", "июл", "авг", "сен", "окт", "ноя", "дек"];
 const WD = ["вс", "пн", "вт", "ср", "чт", "пт", "сб"];
+const WD_LONG = ["Воскресенье", "Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота"];
+const MON_GEN = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
 
 // ---------- tiny helpers
 const $ = (s) => document.querySelector(s);
@@ -195,7 +214,7 @@ const SVG = {
   cal: '<rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/>',
 };
 const ic = (name) => '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + SVG[name] + "</svg>";
-function toast(t) { const e = h(document.body, "div", "toast", t); setTimeout(() => e.remove(), 2200); }
+function toast(t) { document.querySelectorAll(".toast").forEach(x => x.remove()); const e = h(document.body, "div", "toast", t); setTimeout(() => e.remove(), Math.max(2200, t.length * 55)); }
 
 // ---------- state
 const S = {
@@ -222,21 +241,36 @@ async function ya(path) {
   if (r.status === 401) { logout(); throw new Error("нужно войти заново"); }
   return r;
 }
-async function getFile(name) {
-  const r = await ya("/resources/download?path=" + encodeURIComponent("app:/" + name));
+// One Disk operation at a time: parallel writes of the same file (fast ▲▼ in ⚙) made Yandex answer «busy» → red dot (09.10).
+// Busy / too many / server errors are retried 3 times with a short pause.
+let DQ = Promise.resolve();
+function disk(fn) { const p = DQ.then(fn, fn); DQ = p.catch(() => { }); return p; }
+const busy = (st) => st === 409 || st === 423 || st === 429 || st >= 500;
+async function retry(fn) {
+  let last;
+  for (let i = 0; i < 3; i++) {
+    try { return await fn(); } catch (e) { last = e; if (!e.retry) throw e; await new Promise(r => setTimeout(r, 700 * (i + 1))); }
+  }
+  throw last;
+}
+function fail(msg, st) { const e = new Error(msg + (st ? " (" + st + ")" : "")); e.retry = !st || busy(st); return e; }
+const getFile = (name) => disk(() => retry(() => getFile0(name)));
+const putFile = (name, text) => disk(() => retry(() => putFile0(name, text)));
+async function getFile0(name) {
+  let r; try { r = await ya("/resources/download?path=" + encodeURIComponent("app:/" + name)); } catch (e) { if (/войти/.test(e.message)) throw e; throw fail("нет связи с Диском"); }
   if (r.status === 404) return null;
-  if (!r.ok) throw new Error("Диск: " + r.status);
+  if (!r.ok) throw fail("Диск не отдал " + name, r.status);
   const { href } = await r.json();
-  const f = await fetch(href, { referrerPolicy: "no-referrer", cache: "no-store" });
-  if (!f.ok) throw new Error("Диск: файл " + f.status);
+  let f; try { f = await fetch(href, { referrerPolicy: "no-referrer", cache: "no-store" }); } catch (e) { throw fail("нет связи с Диском"); }
+  if (!f.ok) throw fail("Диск не отдал " + name, f.status);
   return await f.text();
 }
-async function putFile(name, text) {
-  const r = await ya("/resources/upload?overwrite=true&path=" + encodeURIComponent("app:/" + name));
-  if (!r.ok) throw new Error("Диск: " + r.status);
+async function putFile0(name, text) {
+  let r; try { r = await ya("/resources/upload?overwrite=true&path=" + encodeURIComponent("app:/" + name)); } catch (e) { if (/войти/.test(e.message)) throw e; throw fail("нет связи с Диском"); }
+  if (!r.ok) throw fail("Диск не принял " + name, r.status);
   const { href, method } = await r.json();
-  const u = await fetch(href, { method: method || "PUT", body: new Blob([text], { type: "application/octet-stream" }) });
-  if (!(u.ok || u.status === 201 || u.status === 202)) throw new Error("Диск: запись " + u.status);
+  let u; try { u = await fetch(href, { method: method || "PUT", body: new Blob([text], { type: "application/octet-stream" }) }); } catch (e) { throw fail("нет связи с Диском"); }
+  if (!(u.ok || u.status === 201 || u.status === 202)) throw fail("Диск не принял " + name, u.status);
 }
 
 // ---------- the effective picture = PC data + my marks not yet applied
@@ -324,8 +358,25 @@ async function load(quiet) {
   } catch (e) { setSync("bad", e.message); }
   draw();
 }
-async function savePhone() { LS.set("phone", S.phone); try { await putFile("phone.json", JSON.stringify(S.phone)); } catch (e) { setSync("bad", e.message); } }
-function setSync(s, err) { S.sync = s; S.syncErr = err || ""; const d = $("#sync"); if (d) { d.className = "sync " + s; d.title = err || ""; } }
+// settings: saved on the phone at once, sent to the Disk once you stop tapping
+function savePhone() {
+  LS.set("phone", S.phone);
+  clearTimeout(S.phoneT);
+  S.phoneT = setTimeout(async () => { setSync("run"); try { await putFile("phone.json", JSON.stringify(S.phone)); setSync("ok"); } catch (e) { setSync("bad", e.message); } }, 1200);
+}
+function setSync(s, err) {
+  S.sync = s; S.syncErr = err || "";
+  const d = $("#sync"); if (d) { d.className = "sync " + s; d.title = err || ""; }
+  clearTimeout(S.retryT);
+  if (s === "bad" && S.token) S.retryT = setTimeout(() => load(true), 30000);   // a red dot heals itself: one more try in 30 s
+}
+function syncText() {
+  const k = S.kino || {};
+  const pc = k.updated ? "список с компьютера от " + dShort(k.updated.slice(0, 10)) + " " + k.updated.slice(11, 16) : "списка с компьютера ещё нет";
+  if (S.sync === "bad") return "Не получилось: " + S.syncErr + ". Попробую ещё раз через 30 секунд. Сейчас показан " + pc + ".";
+  if (S.sync === "run") return "Обмениваюсь с Диском… · " + pc;
+  return "Всё сохранено · " + pc + (pending().length ? " · ещё не принял компьютер: " + pending().length : "");
+}
 
 // ---------- drawing
 function drawTop() {
@@ -335,7 +386,8 @@ function drawTop() {
     b.onclick = () => { S.tab = id; S.open = null; LS.set("tab", id); draw(); scrollTo(0, 0); };
   }
   h(top, "div", "grow");
-  const d = h(top, "span", "sync " + S.sync); d.id = "sync"; d.title = S.syncErr;
+  const d = h(top, "button", "sync " + S.sync); d.id = "sync"; d.title = S.syncErr; d.setAttribute("aria-label", "Синхронизация");
+  d.onclick = () => toast(syncText());
   const g = h(top, "button", "tb" + (S.tab === "gear" && !S.open ? " on" : "")); g.innerHTML = ic("gear");
   g.onclick = () => { S.tab = "gear"; S.open = null; draw(); scrollTo(0, 0); };
 }
@@ -364,46 +416,78 @@ function order(list) {
   const pos = (t) => { const i = o.indexOf(t.id); return i < 0 ? 1e6 : i; };
   return list.slice().sort((a, b) => pos(a) - pos(b));
 }
+// Главная (v0.3, 09.10): three clear blocks instead of one mixed list
+//  1. «Новые серии» — episodes that came out in the last 14 days (date «for me»), not seen yet; grouped by day, newest day first
+//  2. «Продолжить» — «Смотрю» series with older unseen episodes: the next one to watch (+ how many are left)
+//  3. «Скоро выйдут» — the next 7 days
+const FRESH_DAYS = 14;
+function dayTitle(ds) {
+  const d = pd(ds), t = pd(today()), n = Math.round((t - d) / 864e5);
+  if (n === 0) return "Сегодня"; if (n === 1) return "Вчера";
+  return WD_LONG[d.getDay()] + ", " + d.getDate() + " " + MON_GEN[d.getMonth()];
+}
+function epRow(box, t, e, sub) {
+  const r = h(box, "div", "hr");
+  posterEl(r, t);
+  const m = h(r, "div", "mid");
+  h(m, "div", "t", t.title);
+  const s = h(m, "div", "s"); h(s, "b", "", e.s + "×" + pad(e.e)); if (sub) s.append(" · " + sub);
+  m.onclick = r.firstChild.onclick = () => { S.open = t.id; S.season = e.s; draw(); scrollTo(0, 0); };
+  const ck = h(r, "button", "chk"); ck.innerHTML = ic("check"); ck.setAttribute("aria-label", "Посмотрел " + e.s + "×" + e.e);
+  ck.onclick = () => { ck.classList.add("on"); setTimeout(() => markEp(t, [e], true), 180); };
+  return r;
+}
 function drawHome(pg) {
-  const all = titles();
-  const ser = all.filter(t => t.kind === "series" && t.status === "watching");
-  // new: unseen episodes that are already out
-  let fresh = ser.map(t => ({ t, i: info(t) })).filter(x => x.i.unseen.length);
-  if (S.phone.homeSort === "mine") { const o = order(fresh.map(x => x.t)); fresh.sort((a, b) => o.indexOf(a.t) - o.indexOf(b.t)); }
-  else fresh.sort((a, b) => (b.i.lastNew > a.i.lastNew ? 1 : b.i.lastNew < a.i.lastNew ? -1 : 0));
-  h(pg, "h2", "", "Новые серии");
-  if (!fresh.length) h(pg, "div", "empty", "Всё посмотрено");
-  for (const { t, i } of fresh) {
-    const c = h(pg, "div", "nc");
-    posterEl(c, t);
-    const m = h(c, "div", "mid");
-    h(m, "div", "t", t.title);
-    const n = i.unseen[0];
-    const s = h(m, "div", "s"); s.innerHTML = "<b>" + n.s + "×" + pad(n.e) + "</b> · " + dShort(n.air);
-    if (i.unseen.length > 1) h(s, "span", "badge", "+" + (i.unseen.length - 1));
-    m.onclick = c.firstChild.onclick = () => openSeries(t.id);
-    const ck = h(c, "button", "chk"); ck.innerHTML = ic("check"); ck.setAttribute("aria-label", "Посмотрел " + n.s + "×" + n.e);
-    ck.onclick = () => { ck.classList.add("on"); setTimeout(() => markEp(t, [n], true), 180); };
+  const all = titles(), d0 = today();
+  const from = ymd(new Date(pd(d0).getTime() - (FRESH_DAYS - 1) * 864e5));
+  const live = all.filter(t => t.kind === "series" && t.status !== "dropped");
+  // 1. new
+  const fresh = [];
+  for (const t of live) for (const e of eps(t)) if (e.air && e.air >= from && e.air <= d0 && !t.seen[e.k]) fresh.push({ t, e });
+  const freshKeys = new Set(fresh.map(x => x.t.id + e2k(x.e)));
+  const hd = h(pg, "div", "hhead"); h(hd, "h2", "", "Новые серии"); if (fresh.length) h(hd, "span", "cnt", String(fresh.length));
+  if (!fresh.length) h(pg, "div", "calm", "За две недели новых серий нет — всё посмотрено");
+  const byDay = {};
+  for (const x of fresh) (byDay[x.e.air] = byDay[x.e.air] || []).push(x);
+  const pos = (t) => { const i = (S.phone.order || []).indexOf(t.id); return i < 0 ? 1e6 : i; };
+  for (const day of Object.keys(byDay).sort().reverse()) {
+    h(pg, "div", "dlabel", dayTitle(day));
+    const box = h(pg, "div", "box hb");
+    byDay[day].sort((a, b) => (S.phone.homeSort === "mine" ? pos(a.t) - pos(b.t) : 0) || a.t.title.localeCompare(b.t.title, "ru") || a.e.s - b.e.s || a.e.e - b.e.e)
+      .forEach(({ t, e }) => epRow(box, t, e, e.title || ""));
   }
-  // soon: next 14 days, watching + planned
-  const d0 = today(), d1 = ymd(new Date(Date.now() + 14 * 864e5));
+  // 2. continue: «Смотрю» with an older unseen episode (the newest ones are already above)
+  let cont = live.filter(t => t.status === "watching").map(t => {
+    const i = info(t); const n = i.unseen[0];
+    return n && !freshKeys.has(t.id + e2k(n)) ? { t, n, left: i.unseen.length, last: i.lastNew } : null;
+  }).filter(Boolean);
+  if (S.phone.homeSort === "mine") cont.sort((a, b) => pos(a.t) - pos(b.t));
+  else cont.sort((a, b) => (b.last > a.last ? 1 : b.last < a.last ? -1 : 0));
+  if (cont.length) {
+    const h2 = h(pg, "div", "hhead"); h(h2, "h2", "", "Продолжить");
+    const box = h(pg, "div", "box hb");
+    for (const { t, n, left } of cont) epRow(box, t, n, "вышла " + dShort(n.air) + (left > 1 ? " · осталось " + left : ""));
+  }
+  // 3. soon (7 days)
+  const to = ymd(new Date(pd(d0).getTime() + 7 * 864e5));
   const soon = [];
-  for (const t of all.filter(t => t.kind === "series" && (t.status === "watching" || t.status === "planned")))
-    for (const e of eps(t)) if (e.air > d0 && e.air <= d1) soon.push({ t, e });
-  for (const t of all.filter(t => t.kind === "movie" && t.release && t.release > d0 && t.release <= d1)) soon.push({ t, e: null });
+  for (const t of live.filter(t => t.status === "watching" || t.status === "planned")) for (const e of eps(t)) if (e.air > d0 && e.air <= to) soon.push({ t, e });
+  for (const t of all.filter(t => t.kind === "movie" && t.release && t.release > d0 && t.release <= to)) soon.push({ t, e: null });
   soon.sort((a, b) => ((a.e ? a.e.air : a.t.release) < (b.e ? b.e.air : b.t.release) ? -1 : 1));
   if (soon.length) {
-    h(pg, "h2", "", "Скоро выйдут");
+    const h3 = h(pg, "div", "hhead"); h(h3, "h2", "", "Скоро выйдут");
     const box = h(pg, "div", "box");
-    for (const { t, e } of soon.slice(0, 12)) {
+    for (const { t, e } of soon.slice(0, 10)) {
       const r = h(box, "div", "soon");
       h(r, "span", "d", dSoon(e ? e.air : t.release));
       h(r, "span", "t", t.title);
       h(r, "span", "e", e ? e.s + "×" + pad(e.e) : "фильм");
-      r.onclick = () => { if (e) openSeries(t.id); };
+      r.onclick = () => { if (e) { S.open = t.id; S.season = e.s; draw(); scrollTo(0, 0); } else { S.tab = "movies"; draw(); } };
     }
+    const more = h(pg, "button", "linkb", "Весь календарь"); more.onclick = () => { S.tab = "cal"; LS.set("tab", "cal"); draw(); scrollTo(0, 0); };
   }
 }
+const e2k = (e) => "|" + e.s + "x" + e.e;
 function chipRow(pg, keys, cur, counts, onPick) {
   const row = h(pg, "div", "chips");
   for (const k of keys) {
@@ -578,9 +662,7 @@ function drawGear(pg) {
     });
   }
   h(pg, "h2", "", "Синхронизация");
-  const k = S.kino || {};
-  h(pg, "div", "note", "Список с компьютера: " + (k.updated ? k.updated.replace("T", " ") : "—") + " · ещё не принял компьютер: " + pending().length);
-  if (S.syncErr) h(pg, "div", "note", "Ошибка: " + S.syncErr);
+  h(pg, "div", "note", syncText());
   const rb = h(pg, "button", "wide", "Обновить сейчас"); rb.onclick = () => load();
   const lo = h(pg, "button", "wide red", "Выйти из Яндекса"); lo.onclick = () => ask("Выйти?", "Отметки, которые ещё не ушли, останутся на телефоне.", [["Выйти", logout]]);
   h(pg, "div", "note", "Версия " + VERSION);
