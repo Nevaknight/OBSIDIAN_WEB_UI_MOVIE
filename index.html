@@ -112,6 +112,18 @@ h2:first-child{margin-top:4px}
 .hr .s b{color:var(--tx);font-weight:600}
 .hr .pst{width:40px;height:60px;border-radius:7px}
 .hr .chk{width:42px;height:42px}.hr .chk svg{width:20px;height:20px}
+.scard{background:var(--card);border-radius:var(--r);padding:10px 10px 4px;margin-bottom:10px}
+.sc-top{display:flex;align-items:center;gap:12px;padding-bottom:8px}
+.sc-top .mid{flex:1;min-width:0}
+.sc-top .t{font-weight:700;font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.sc-top .s{font-size:13px;color:var(--acc2);margin-top:2px;font-weight:600}
+.sc-top .pst{width:40px;height:60px;border-radius:7px}
+.sc-ep{display:flex;align-items:center;gap:10px;padding:8px 2px;border-top:1px solid var(--line)}
+.sc-ep .mid{flex:1;min-width:0}
+.sc-ep .e{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}.sc-ep .e b{font-weight:700}
+.sc-ep .d{font-size:12px;color:var(--mut);margin-top:1px}
+.sc-ep .chk{width:40px;height:40px}.sc-ep .chk svg{width:18px;height:18px}
+.sc-more{display:block;width:100%;height:36px;border-top:1px solid var(--line);color:var(--acc2);font-weight:600;font-size:14px}
 .calm{color:var(--mut);background:var(--card);border-radius:var(--r);padding:16px;text-align:center;font-size:15px}
 .linkb{display:block;margin:10px auto 0;color:var(--acc2);font-weight:600;font-size:14px;height:36px}
 /* links v0.4 */
@@ -191,7 +203,7 @@ h2:first-child{margin-top:4px}
 //   app:/phone.json  — phone settings (order of tracking, home sorting)
 // The PC is the master copy. Technical notes: DATA/SYSTEM/_CORE_PHONE.md «Техническая часть».
 // ======================================================================================================
-const VERSION = "0.4.0";
+const VERSION = "0.5.0";
 const CLIENT_ID = "9823dc5712e243f1978ba0f4f2f7d76a";
 const API = "https://cloud-api.yandex.net/v1/disk";
 const HERE = location.origin + location.pathname;
@@ -238,7 +250,7 @@ const S = {
   posters: LS.get("posters", {}),      // id -> dataURL
   ops: LS.get("ops", []),              // my marks not yet confirmed by the PC
   phone: LS.get("phone", { order: [], homeSort: "new" }),
-  tab: LS.get("tab", "home"),
+  tab: LS.get("tab", "home"), lmode: LS.get("lmode", "links"),
   serChip: LS.get("serChip", "watching"), movChip: LS.get("movChip", "planned"),
   links: LS.get("links", []),          // links I sent (last 30, for the list) — {at, url, kind, dest}
   lstat: LS.get("lstat", { applied: "", items: [] }),   // what the PC did with them (links_status.json)
@@ -463,34 +475,37 @@ function drawHome(pg) {
   const all = titles(), d0 = today();
   const from = ymd(new Date(pd(d0).getTime() - (FRESH_DAYS - 1) * 864e5));
   const live = all.filter(t => t.kind === "series" && t.status !== "dropped");
-  // 1. new
-  const fresh = [];
-  for (const t of live) for (const e of eps(t)) if (e.air && e.air >= from && e.air <= d0 && !t.seen[e.k]) fresh.push({ t, e });
-  const freshKeys = new Set(fresh.map(x => x.t.id + e2k(x.e)));
-  const hd = h(pg, "div", "hhead"); h(hd, "h2", "", "Новые серии"); if (fresh.length) h(hd, "span", "cnt", String(fresh.length));
-  if (!fresh.length) h(pg, "div", "calm", "За две недели новых серий нет — всё посмотрено");
-  const byDay = {};
-  for (const x of fresh) (byDay[x.e.air] = byDay[x.e.air] || []).push(x);
+  // 1. new: per series its unseen episodes out in the last 14 days; card = up to 3 newest (newest first); cards by newest date
+  const cards = [];
+  for (const t of live) {
+    const fresh = eps(t).filter(e => e.air && e.air >= from && e.air <= d0 && !t.seen[e.k]).sort((a, b) => b.air < a.air ? -1 : b.air > a.air ? 1 : b.s - a.s || b.e - a.e);
+    if (fresh.length) cards.push({ t, fresh });
+  }
   const pos = (t) => { const i = (S.phone.order || []).indexOf(t.id); return i < 0 ? 1e6 : i; };
-  for (const day of Object.keys(byDay).sort().reverse()) {
-    h(pg, "div", "dlabel", dayTitle(day));
-    const box = h(pg, "div", "box hb");
-    byDay[day].sort((a, b) => (S.phone.homeSort === "mine" ? pos(a.t) - pos(b.t) : 0) || a.t.title.localeCompare(b.t.title, "ru") || a.e.s - b.e.s || a.e.e - b.e.e)
-      .forEach(({ t, e }) => epRow(box, t, e, e.title || ""));
+  if (S.phone.homeSort === "mine") cards.sort((a, b) => pos(a.t) - pos(b.t));
+  else cards.sort((a, b) => (b.fresh[0].air > a.fresh[0].air ? 1 : b.fresh[0].air < a.fresh[0].air ? -1 : a.t.title.localeCompare(b.t.title, "ru")));
+  const total = cards.reduce((n, c) => n + c.fresh.length, 0);
+  const hd = h(pg, "div", "hhead"); h(hd, "h2", "", "Новые серии"); if (total) h(hd, "span", "cnt", String(total));
+  if (!cards.length) h(pg, "div", "calm", "За две недели новых серий нет — всё посмотрено");
+  for (const { t, fresh } of cards) {
+    const c = h(pg, "div", "scard");
+    const top = h(c, "div", "sc-top");
+    posterEl(top, t);
+    const tm = h(top, "div", "mid"); h(tm, "div", "t", t.title);
+    h(tm, "div", "s", fresh.length === 1 ? "1 новая серия" : fresh.length + (fresh.length < 5 ? " новые серии" : " новых серий"));
+    const ar = h(top, "span", "arrow"); ar.innerHTML = ic("right");
+    top.onclick = () => { S.open = t.id; S.season = fresh[0].s; draw(); scrollTo(0, 0); };
+    for (const e of fresh.slice(0, 3)) {
+      const r = h(c, "div", "sc-ep");
+      const m = h(r, "div", "mid");
+      const l1 = h(m, "div", "e"); h(l1, "b", "", e.s + "×" + pad(e.e)); if (e.title) l1.append(" · " + e.title);
+      h(m, "div", "d", dayTitle(e.air));
+      const ck = h(r, "button", "chk"); ck.innerHTML = ic("check"); ck.setAttribute("aria-label", "Посмотрел " + e.s + "×" + e.e);
+      ck.onclick = () => { ck.classList.add("on"); setTimeout(() => markEp(t, [e], true), 180); };
+    }
+    if (fresh.length > 3) { const more = h(c, "button", "sc-more", "ещё " + (fresh.length - 3)); more.onclick = top.onclick; }
   }
-  // 2. continue: «Смотрю» with an older unseen episode (the newest ones are already above)
-  let cont = live.filter(t => t.status === "watching").map(t => {
-    const i = info(t); const n = i.unseen[0];
-    return n && !freshKeys.has(t.id + e2k(n)) ? { t, n, left: i.unseen.length, last: i.lastNew } : null;
-  }).filter(Boolean);
-  if (S.phone.homeSort === "mine") cont.sort((a, b) => pos(a.t) - pos(b.t));
-  else cont.sort((a, b) => (b.last > a.last ? 1 : b.last < a.last ? -1 : 0));
-  if (cont.length) {
-    const h2 = h(pg, "div", "hhead"); h(h2, "h2", "", "Продолжить");
-    const box = h(pg, "div", "box hb");
-    for (const { t, n, left } of cont) epRow(box, t, n, "вышла " + dShort(n.air) + (left > 1 ? " · осталось " + left : ""));
-  }
-  // 3. soon (7 days)
+  // 2. soon (7 days)
   const to = ymd(new Date(pd(d0).getTime() + 7 * 864e5));
   const soon = [];
   for (const t of live.filter(t => t.status === "watching" || t.status === "planned")) for (const e of eps(t)) if (e.air > d0 && e.air <= to) soon.push({ t, e });
@@ -510,10 +525,24 @@ function drawHome(pg) {
   }
 }
 const e2k = (e) => "|" + e.s + "x" + e.e;
+// statuses: the PC sends its list (kino.json statuses / st_series / st_movie); anything else found in the data still gets a chip,
+// an empty status shows as «Без статуса» — so a title added on the PC never disappears from the phone
+function stLabel(k) { const m = (S.kino && S.kino.statuses) || ST; return m[k] || (k ? k : "Без статуса"); }
+function stKeys(kind, list) {
+  const base = ((S.kino && (kind === "movie" ? S.kino.st_movie : S.kino.st_series)) || (kind === "movie" ? ST_MOVIE : ST_SERIES)).slice();
+  for (const t of list) if (!base.includes(t.status || "")) base.push(t.status || "");
+  return base;
+}
+// «выйдет …»: a film with a future release, a series whose first episode is still ahead
+function upcoming(t) {
+  const d0 = today();
+  if (t.kind === "movie") return t.release && t.release > d0 ? "выйдет " + dShort(t.release) : "";
+  const f = eps(t).find(e => e.air); return f && f.air > d0 ? "выйдет " + dShort(f.air) : "";
+}
 function chipRow(pg, keys, cur, counts, onPick) {
   const row = h(pg, "div", "chips");
   for (const k of keys) {
-    const c = h(row, "button", "chip" + (cur === k ? " on" : ""), ST[k]);
+    const c = h(row, "button", "chip" + (cur === k ? " on" : ""), stLabel(k));
     if (counts[k]) h(c, "i", "", String(counts[k]));
     c.onclick = () => onPick(k);
   }
@@ -521,8 +550,10 @@ function chipRow(pg, keys, cur, counts, onPick) {
 function drawSeriesList(pg) {
   const ser = titles().filter(t => t.kind === "series");
   const cnt = {}; for (const t of ser) cnt[t.status] = (cnt[t.status] || 0) + 1;
-  chipRow(pg, ST_SERIES, S.serChip, cnt, (k) => { S.serChip = k; LS.set("serChip", k); draw(); });
-  let list = ser.filter(t => t.status === S.serChip);
+  const keys = stKeys("series", ser);
+  if (!keys.includes(S.serChip)) S.serChip = keys[0];
+  chipRow(pg, keys, S.serChip, cnt, (k) => { S.serChip = k; LS.set("serChip", k); draw(); });
+  let list = ser.filter(t => (t.status || "") === S.serChip);
   list = S.serChip === "watching" ? order(list) : list.sort((a, b) => a.title.localeCompare(b.title, "ru"));
   if (!list.length) h(pg, "div", "empty", "Пусто");
   for (const t of list) {
@@ -532,7 +563,7 @@ function drawSeriesList(pg) {
     const m = h(r, "div", "mid");
     const tt = h(m, "div", "t", t.title);
     if (i.unseen.length) h(tt, "span", "badge", String(i.unseen.length));
-    h(m, "div", "s", i.seen + " из " + i.all.length + (t.ended ? " · закончен" : ""));
+    h(m, "div", "s", upcoming(t) || (i.seen + " из " + i.all.length + (t.ended ? " · закончен" : "")));
     const pb = h(m, "div", "pbar"); h(pb, "i").style.width = (i.all.length ? Math.round(i.seen / i.all.length * 100) : 0) + "%";
     const a = h(r, "span", "arrow"); a.innerHTML = ic("right");
     r.onclick = () => openSeries(t.id);
@@ -547,11 +578,11 @@ function drawSeries(pg, t) {
   posterEl(hero, t, true);
   const hm = h(hero, "div", "");
   h(hm, "h1", "", t.title);
-  h(hm, "div", "s", [t.year, i.seen + " из " + i.all.length + " серий", t.ended ? "закончен" : ""].filter(Boolean).join(" · "));
+  h(hm, "div", "s", [t.year, upcoming(t) || (i.seen + " из " + i.all.length + " серий"), t.ended ? "закончен" : ""].filter(Boolean).join(" · "));
   const ss = h(pg, "div", "stsel");
-  for (const k of ST_SERIES) {
-    const c = h(ss, "button", "chip" + (t.status === k ? " on" : ""), ST[k]);
-    if (t.status === k) c.style.background = "var(--st-" + k + ")";
+  for (const k of stKeys("series", [t]).filter(Boolean)) {
+    const c = h(ss, "button", "chip" + (t.status === k ? " on" : ""), stLabel(k));
+    if (t.status === k) c.style.background = "var(--st-" + k + ", var(--acc))";
     c.onclick = () => setStatus(t, k);
   }
   const seasons = [...new Set(i.all.map(e => e.s))];
@@ -584,16 +615,19 @@ function drawSeries(pg, t) {
 function drawMovies(pg) {
   const mv = titles().filter(t => t.kind === "movie");
   const cnt = {}; for (const t of mv) cnt[t.status] = (cnt[t.status] || 0) + 1;
-  chipRow(pg, ST_MOVIE, S.movChip, cnt, (k) => { S.movChip = k; LS.set("movChip", k); draw(); });
-  const list = mv.filter(t => t.status === S.movChip).sort((a, b) => a.title.localeCompare(b.title, "ru"));
+  const keys = stKeys("movie", mv);
+  if (!keys.includes(S.movChip)) S.movChip = keys[0];
+  chipRow(pg, keys, S.movChip, cnt, (k) => { S.movChip = k; LS.set("movChip", k); draw(); });
+  const list = mv.filter(t => (t.status || "") === S.movChip).sort((a, b) => { const ua = upcoming(a) ? a.release : "", ub = upcoming(b) ? b.release : ""; if (ua || ub) { if (!ua) return 1; if (!ub) return -1; if (ua !== ub) return ua < ub ? -1 : 1; } return a.title.localeCompare(b.title, "ru"); });
   if (!list.length) h(pg, "div", "empty", "Пусто");
   for (const t of list) {
     const r = h(pg, "div", "row");
     posterEl(r, t);
     const m = h(r, "div", "mid");
     h(m, "div", "t", t.title);
-    h(m, "div", "s", [t.year, t.release && t.release > today() ? "выйдет " + dShort(t.release) : ""].filter(Boolean).join(" · "));
+    h(m, "div", "s", [t.year, upcoming(t)].filter(Boolean).join(" · "));
     const done = t.status === "watched";
+    if (upcoming(t) && !done) continue;   // not out yet: nothing to mark
     const b = h(r, "button", "mbtn" + (done ? " on" : ""), done ? "✓ Смотрел" : "Смотрел");
     b.onclick = () => setStatus(t, done ? "planned" : "watched");
   }
@@ -683,7 +717,7 @@ const DEST_RU = { video: "скачать видео", clip: "клип", bookmark
 function linksPending() { const a = (S.lstat && S.lstat.applied) || ""; return S.links.filter(x => x.at > a); }
 function addLink(url, kind, dest) {
   const at = new Date().toISOString();
-  S.links = [{ at, url, kind, dest: dest || "" }].concat(S.links.filter(x => x.url !== url || x.at > ((S.lstat && S.lstat.applied) || ""))).slice(0, 30);
+  S.links = [{ at, url, kind, dest: dest || "" }].concat(S.links.filter(x => x.kind === "song" || x.url !== url || x.at > ((S.lstat && S.lstat.applied) || ""))).slice(0, 60);
   LS.set("links", S.links);
   clearTimeout(S.linkT); S.linkT = setTimeout(pushLinks, 800);
 }
@@ -696,8 +730,8 @@ async function pushLinks() {
     try { const t = await getFile("links.json"); if (t) cur = JSON.parse(t); } catch (e) { if (/войти/.test(e.message)) throw e; }
     const a = (S.lstat && S.lstat.applied) || "";
     const keep = (cur.items || []).filter(x => x.at > a);
-    const have = new Set(keep.map(x => x.at + x.url));
-    for (const x of mine) if (!have.has(x.at + x.url)) keep.push(x);
+    const have = new Set(keep.map(x => x.at + x.url + (x.text || "")));
+    for (const x of mine) if (!have.has(x.at + x.url + (x.text || ""))) keep.push(x);
     keep.sort((x, y) => x.at < y.at ? -1 : 1);
     await putFile("links.json", JSON.stringify({ items: keep }));
     setSync("ok");
@@ -706,7 +740,7 @@ async function pushLinks() {
   if (S.tab === "links") draw();
 }
 function stateOf(x) {
-  const st = (S.lstat.items || []).find(y => y.at === x.at && y.url === x.url);
+  const st = (S.lstat.items || []).find(y => y.at === x.at && (y.url || "") === (x.url || ""));
   if (st) return { t: st.state, ok: !/не |ошибк/i.test(st.state) };
   if (x.at <= ((S.lstat && S.lstat.applied) || "")) return { t: "принято компьютером", ok: true };
   return { t: "ждёт компьютер", wait: true };
@@ -729,7 +763,44 @@ async function pasteNow() {
   try { t = await navigator.clipboard.readText(); } catch (e) { toast("Телефон не дал прочитать буфер — вставь ссылку в поле ниже"); return; }
   takeText(t);
 }
+// songs: just text (typed, or copied from Shazam) — the PC writes them into DATA/CONFIG/ОЧЕРЕДИ/SONGS.md
+function cleanSong(t) {
+  t = String(t || "").replace(/https?:\/\/\S+/g, " ").replace(/\s+/g, " ").trim();
+  let m = /(?:нашёл|нашел|нашла|нашли)\s*(?:\(а\))?\s+(.+?)\s+(?:с помощью|через)\s+Shazam/i.exec(t) || /discover(?:ed)?\s+(.+?)\s+(?:with|using|on)\s+Shazam/i.exec(t) || /Shazam[:\s-]+(.+)/i.exec(t);
+  if (m) t = m[1];
+  return t.replace(/^[«"“]|[»"”.]$/g, "").trim();
+}
+function addSong(text) {
+  const t = cleanSong(text);
+  if (!t) { toast("Пусто — напиши название песни"); return false; }
+  const at = new Date().toISOString();
+  S.links = [{ at, url: "", text: t, kind: "song", dest: "" }].concat(S.links).slice(0, 60);
+  LS.set("links", S.links);
+  clearTimeout(S.linkT); S.linkT = setTimeout(pushLinks, 800);
+  toast("Песня записана"); return true;
+}
+function drawSongs(pg) {
+  const row = h(pg, "div", "lrow");
+  const inp = h(row, "input", "linp"); inp.placeholder = "название, исполнитель — как запомнил"; inp.autocomplete = "off";
+  const ok = h(row, "button", "mbtn", "Записать"); ok.onclick = () => { if (addSong(inp.value)) { inp.value = ""; draw(); } };
+  inp.onkeydown = (e) => { if (e.key === "Enter") ok.click(); };
+  const pb = h(pg, "button", "wide", "Вставить из буфера (Shazam)");
+  pb.onclick = async () => { let t = ""; try { t = await navigator.clipboard.readText(); } catch (e) { toast("Телефон не дал прочитать буфер"); return; } if (addSong(t)) draw(); };
+  h(pg, "div", "note", "Компьютер сложит песни в список «Песни» (SONGS.md), куда поставить окошко — решим потом.");
+  const songs = S.links.filter(x => x.kind === "song");
+  const hd = h(pg, "div", "hhead"); h(hd, "h2", "", "Песни"); if (songs.length) h(hd, "span", "cnt", String(songs.length));
+  if (!songs.length) { h(pg, "div", "calm", "Пока ни одной"); return; }
+  const box = h(pg, "div", "box hb");
+  for (const x of songs) {
+    const r = h(box, "div", "lk");
+    h(r, "div", "lu", x.text);
+    const st = stateOf(x); const sEl = h(r, "div", "ls" + (st.wait ? " wait" : st.ok ? " ok" : " bad"), st.t + " · " + dShort(x.at.slice(0, 10))); sEl.prepend(h(null, "i"));
+  }
+}
 function drawLinks(pg) {
+  const sg = h(pg, "div", "seg");
+  for (const [k, l] of [["links", "Ссылки"], ["songs", "Песни"]]) { const b = h(sg, "button", (S.lmode || "links") === k ? "on" : "", l); b.onclick = () => { S.lmode = k; LS.set("lmode", k); draw(); }; }
+  if (S.lmode === "songs") return drawSongs(pg);
   const b = h(pg, "button", "wide acc pastebtn"); b.innerHTML = ic("paste") + "<span>Вставить из буфера</span>"; b.onclick = pasteNow;
   const row = h(pg, "div", "lrow");
   const inp = h(row, "input", "linp"); inp.placeholder = "или вставь ссылку сюда"; inp.autocapitalize = "off"; inp.autocomplete = "off"; inp.spellcheck = false;
@@ -738,9 +809,10 @@ function drawLinks(pg) {
   h(pg, "div", "note", "Компьютер заберёт ссылки, когда открыта главная в Obsidian. Инстаграм и X встанут в списки — качать кнопкой «Скачать» на ПК.");
   const hd = h(pg, "div", "hhead"); h(hd, "h2", "", "Последние");
   const n = linksPending().length; if (n) h(hd, "span", "cnt", "ждут: " + n);
-  if (!S.links.length) { h(pg, "div", "calm", "Пока ничего не отправлено"); return; }
+  const onlyLinks = S.links.filter(x => x.kind !== "song");
+  if (!onlyLinks.length) { h(pg, "div", "calm", "Пока ничего не отправлено"); return; }
   const box = h(pg, "div", "box hb");
-  for (const x of S.links) {
+  for (const x of onlyLinks.slice(0, 30)) {
     const r = h(box, "div", "lk");
     const top = h(r, "div", "lt"); h(top, "b", "", KIND_RU[x.kind] || "Ссылка"); if (x.dest) top.append(" · " + DEST_RU[x.dest]);
     h(r, "div", "lu", shortLink(x.url));
