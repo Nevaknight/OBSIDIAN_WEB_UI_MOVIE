@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="referrer" content="no-referrer">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<title>Мнемозина Кино · проверка</title>
+<style>
+:root{--bg:#17171a;--card:#222227;--line:#34343a;--tx:#e6e6ea;--mut:#9a9aa3;--acc:#8a5cf5;--ok:#3fb27f;--bad:#e05252;--warn:#e3b341}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--tx);font:16px/1.45 -apple-system,system-ui,sans-serif;padding:calc(env(safe-area-inset-top) + 18px) 16px calc(env(safe-area-inset-bottom) + 24px)}
+h1{font-size:22px;margin:0 0 4px}
+.sub{color:var(--mut);font-size:14px;margin-bottom:18px}
+.card{background:var(--card);border-radius:14px;padding:14px;margin-bottom:12px}
+.card h2{font-size:15px;margin:0 0 10px}
+button{font:inherit;font-weight:600;border:0;border-radius:10px;height:46px;padding:0 16px;width:100%;background:var(--acc);color:#fff;margin-top:8px}
+button.sec{background:#2e2e35;color:var(--tx);font-weight:500}
+input{font:inherit;width:100%;height:44px;border-radius:10px;border:1px solid var(--line);background:#1b1b1f;color:var(--tx);padding:0 12px;margin-top:8px}
+.row{display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-top:1px solid var(--line)}
+.row:first-of-type{border-top:0}
+.dot{width:12px;height:12px;border-radius:50%;background:#55555c;flex-shrink:0;margin-top:6px}
+.dot.ok{background:var(--ok)}.dot.bad{background:var(--bad)}.dot.run{background:var(--warn)}
+.row b{display:block;font-weight:600}
+.row small{color:var(--mut);font-size:13px;word-break:break-word}
+.who{font-size:14px;color:var(--mut)}
+</style>
+</head>
+<body>
+<h1>Мнемозина Кино</h1>
+<div class="sub">Проверка: работает ли Яндекс Диск прямо с телефона</div>
+
+<div class="card">
+  <h2>1. Вход</h2>
+  <div class="who" id="who">Не вошёл</div>
+  <button id="login">Войти через Яндекс</button>
+  <button class="sec" id="login2">Войти и скопировать код вручную</button>
+  <input id="tok" placeholder="сюда вставить код (если вход вручную)" autocomplete="off" autocapitalize="off" spellcheck="false">
+  <button class="sec" id="logout">Выйти</button>
+</div>
+
+<div class="card">
+  <h2>2. Проверка</h2>
+  <div id="checks"></div>
+  <button id="run">Проверить</button>
+</div>
+
+<script>
+const CLIENT_ID = "9823dc5712e243f1978ba0f4f2f7d76a";
+const API = "https://cloud-api.yandex.net/v1/disk";
+const HERE = location.origin + location.pathname;
+const $ = (id) => document.getElementById(id);
+const store = { get: (k) => { try { return localStorage.getItem(k) || ""; } catch (e) { return ""; } }, set: (k, v) => { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch (e) { } } };
+
+// after «Войти через Яндекс» Yandex comes back here with #access_token=… (the part after # never goes to any server)
+(function takeToken() {
+  const h = new URLSearchParams(location.hash.slice(1));
+  if (h.get("access_token")) { store.set("ya_token", h.get("access_token")); history.replaceState(null, "", HERE); }
+  if (h.get("error")) alert("Яндекс ответил: " + (h.get("error_description") || h.get("error")));
+})();
+const token = () => (store.get("ya_token") || $("tok").value || "").trim();
+$("tok").oninput = () => { const t = $("tok").value.trim(); if (t.length > 20) { store.set("ya_token", t); paintWho(); } };
+function paintWho() { $("who").textContent = token() ? "Вошёл (разрешение сохранено на этом телефоне)" : "Не вошёл"; }
+paintWho();
+
+const auth = (redirect) => location.href = "https://oauth.yandex.ru/authorize?response_type=token&client_id=" + CLIENT_ID + "&redirect_uri=" + encodeURIComponent(redirect) + "&force_confirm=no";
+$("login").onclick = () => auth(HERE);
+$("login2").onclick = () => auth("https://oauth.yandex.ru/verification_code");
+$("logout").onclick = () => { store.set("ya_token", ""); $("tok").value = ""; paintWho(); };
+
+const CHECKS = [
+  ["folder", "Папка приложения на Диске видна"],
+  ["write", "Запись файла на Диск"],
+  ["read", "Чтение файла с Диска"],
+  ["myshows", "MyShows отвечает прямо с телефона"],
+];
+function paint(state) {
+  const box = $("checks"); box.innerHTML = "";
+  for (const [k, title] of CHECKS) {
+    const s = state[k] || {};
+    const r = document.createElement("div"); r.className = "row";
+    r.innerHTML = `<span class="dot ${s.c || ""}"></span><div><b></b><small></small></div>`;
+    r.querySelector("b").textContent = title; r.querySelector("small").textContent = s.t || "";
+    box.appendChild(r);
+  }
+}
+paint({});
+
+async function run() {
+  const st = {}; const set = (k, c, t) => { st[k] = { c, t }; paint(st); };
+  const t = token();
+  if (!t) { alert("Сначала войди через Яндекс"); return; }
+  const H = { Authorization: "OAuth " + t };
+  const why = async (r) => { let x = ""; try { x = (await r.json()).description || ""; } catch (e) { } return "ответ " + r.status + (x ? " · " + x : ""); };
+  // 1. app folder
+  set("folder", "run", "проверяю…");
+  try {
+    const r = await fetch(API + "/resources?path=" + encodeURIComponent("app:/"), { headers: H });
+    if (r.ok || r.status === 404) set("folder", "ok", r.ok ? "папка есть" : "папки ещё нет — появится после записи");
+    else { set("folder", "bad", await why(r)); return; }
+  } catch (e) { set("folder", "bad", "браузер не пустил запрос: " + e.message); return; }
+  // 2. write a small file
+  const body = JSON.stringify({ test: true, at: new Date().toISOString(), from: navigator.userAgent.slice(0, 60) });
+  set("write", "run", "записываю…");
+  try {
+    const r = await fetch(API + "/resources/upload?overwrite=true&path=" + encodeURIComponent("app:/test.json"), { headers: H });
+    if (!r.ok) { set("write", "bad", "ссылка для записи: " + await why(r)); return; }
+    const { href, method } = await r.json();
+    const u = await fetch(href, { method: method || "PUT", body: new Blob([body], { type: "application/octet-stream" }) });
+    if (u.ok || u.status === 201 || u.status === 202) set("write", "ok", "test.json записан в «Приложения / Мнемозина Кино»");
+    else { set("write", "bad", "запись: ответ " + u.status); return; }
+  } catch (e) { set("write", "bad", "браузер не пустил запись: " + e.message); return; }
+  // 3. read it back
+  set("read", "run", "читаю…");
+  try {
+    const r = await fetch(API + "/resources/download?path=" + encodeURIComponent("app:/test.json"), { headers: H });
+    if (!r.ok) { set("read", "bad", "ссылка для чтения: " + await why(r)); return; }
+    const { href } = await r.json();
+    const d = await fetch(href, { referrerPolicy: "no-referrer" });
+    const txt = await d.text();
+    set("read", txt === body ? "ok" : "bad", txt === body ? "прочитан тот же файл" : "прочитано не то: " + txt.slice(0, 80));
+  } catch (e) { set("read", "bad", "браузер не пустил чтение: " + e.message); }
+  // 4. MyShows (not required: the computer can bring its data)
+  set("myshows", "run", "спрашиваю…");
+  try {
+    const r = await fetch("https://myshows.me/v3/rpc/", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ jsonrpc: "2.0", method: "shows.GetById", params: { showId: 1, withEpisodes: false }, id: 1 }) });
+    const j = await r.json();
+    set("myshows", j && j.result ? "ok" : "bad", j && j.result ? "отвечает: " + (j.result.title || j.result.titleOriginal || "есть данные") : "ответ без данных");
+  } catch (e) { set("myshows", "bad", "не пускает с телефона — не страшно, данные принесёт компьютер"); }
+}
+$("run").onclick = run;
+</script>
+</body>
+</html>
